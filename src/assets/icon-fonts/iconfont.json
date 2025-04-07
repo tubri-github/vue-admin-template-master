@@ -1,0 +1,16 @@
+{
+  "id": "2827056",
+  "name": "vue-admin-template",
+  "font_family": "iconfont",
+  "css_prefix_text": "musuem-icon",
+  "description": "",
+  "glyphs": [
+    {
+      "icon_id": "10627852",
+      "name": "打印机",
+      "font_class": "dayinji",
+      "unicode": "e600",
+      "unicode_decimal": 58880
+    }
+  ]
+}

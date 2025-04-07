@@ -1,0 +1,21 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" >
+<svg xmlns="http://www.w3.org/2000/svg">
+  <metadata>Created by iconfont</metadata>
+  <defs>
+  <font id="iconfont" horiz-adv-x="1024">
+    <font-face
+      font-family="iconfont"
+      font-weight="400"
+      font-stretch="normal"
+      units-per-em="1024"
+      ascent="896"
+      descent="-128"
+    />
+      <missing-glyph />
+      
+      <glyph glyph-name="dayinji" unicode="&#58880;" d="M288 776h448v-112H288V776zM904 608H120c-30.8 0-56-25.2-56-56v-280c0-30.8 25.2-56 56-56h168v-224h448V216h168c30.8 0 56 25.2 56 56V552c0 30.8-25.2 56-56 56zM176 440c-30.9 0-56 25.1-56 56s25.1 56 56 56 56-25.1 56-56-25.1-56-56-56z m504-392H344V328h336v-280z"  horiz-adv-x="1024" />
+      
+    </font>
+  </defs>
+</svg>

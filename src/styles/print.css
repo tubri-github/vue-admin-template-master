@@ -1,0 +1,17 @@
+@media print {
+  @page{
+    size:  A4;
+    margin: 5mm 2mm;
+
+    @bottom-left {
+      content: "Page " counter(page) " of " counter(pages);
+    }
+
+  }
+
+  body{
+    height:auto;
+  }
+
+
+}
