@@ -4,7 +4,7 @@ const api_prefix = '/api/'
 
 export function addNewLoan(data) {
   return request({
-    url: api_prefix + 'loan' + '/loan/',
+    url: api_prefix + 'loan' + '/loan',
     method: 'post',
     data
   })
@@ -12,7 +12,7 @@ export function addNewLoan(data) {
 
 export function addNewLoanPeople(data) {
   return request({
-    url: api_prefix + 'loan' + '/loanpeople/',
+    url: api_prefix + 'loan' + '/loanpeople',
     method: 'post',
     data
   })
@@ -20,7 +20,7 @@ export function addNewLoanPeople(data) {
 
 export function addNewLot(data) {
   return request({
-    url: api_prefix + 'lots' + '/lot/',
+    url: api_prefix + 'lots' + '/lot',
     method: 'post',
     data
   })
@@ -36,7 +36,7 @@ export function getLotString(params) {
 
 export function getLoanPeople(params) {
   return request({
-    url: api_prefix + 'loan' + '/loanpeople/',
+    url: api_prefix + 'loan' + '/loanpeople',
     method: 'get',
     params
   })
@@ -51,7 +51,7 @@ export function getLoan(params) {
 
 export function updateLoan(data) {
   return request({
-    url: api_prefix + 'loan' + '/uploan/',
+    url: api_prefix + 'loan' + '/uploan',
     method: 'post',
     data
   })
@@ -59,7 +59,7 @@ export function updateLoan(data) {
 
 export function generateNewLoanID(params) {
   return request({
-    url: api_prefix + 'loan' + '/newloan/',
+    url: api_prefix + 'loan' + '/newloan',
     method: 'get',
     params
   })
@@ -67,7 +67,7 @@ export function generateNewLoanID(params) {
 
 export function generateNewGiftID(params) {
   return request({
-    url: api_prefix + 'loan' + '/newgift/',
+    url: api_prefix + 'loan' + '/newgift',
     method: 'get',
     params
   })
@@ -94,7 +94,7 @@ export function getLocalityNumbersByYear(params) {
 
 export function getLocalityAdvanced(params) {
   return request({
-    url: api_prefix + 'locality' + '/localityAdvanced/',
+    url: api_prefix + 'locality' + '/localityAdvanced',
     method: 'get',
     params
   })
@@ -129,7 +129,7 @@ export function getPreparationListByPrimaryID(params) {
 
 export function updateLot(data) {
   return request({
-    url: api_prefix + 'lots' + '/updatelot/',
+    url: api_prefix + 'lots' + '/updatelot',
     method: 'post',
     data
   })
@@ -137,7 +137,7 @@ export function updateLot(data) {
 
 export function getLotsAdvanced(params) {
   return request({
-    url: api_prefix + 'lots' + '/lots/',
+    url: api_prefix + 'lots' + '/lots',
     method: 'get',
     params
   })
@@ -145,7 +145,7 @@ export function getLotsAdvanced(params) {
 
 export function getLoansAdvanced(params) {
   return request({
-    url: api_prefix + 'loan' + '/loanAdvanced/',
+    url: api_prefix + 'loan' + '/loanAdvanced',
     method: 'get',
     params
   })
@@ -153,7 +153,7 @@ export function getLoansAdvanced(params) {
 
 export function deaccessionLot(data) {
   return request({
-    url: api_prefix + 'lots' + '/deaccession/',
+    url: api_prefix + 'lots' + '/deaccession',
     method: 'post',
     data
   })
@@ -176,7 +176,7 @@ export function getLocality(params) {
 
 export function getJarSizes(params) {
   return request({
-    url: api_prefix + 'lots' + '/jarsizes/',
+    url: api_prefix + 'lots' + '/jarsizes',
     method: 'get',
     params
   })
@@ -207,7 +207,7 @@ export function getTaxon(params) {
 
 export function addTaxon(data) {
   return request({
-    url: api_prefix + 'taxon' + '/taxon/',
+    url: api_prefix + 'taxon' + '/taxon',
     method: 'post',
     data
   })
@@ -276,28 +276,28 @@ export function getCountry(params) {
 
 export function addNewLocality(data) {
   return request({
-    url: api_prefix + 'locality' + '/locality/',
+    url: api_prefix + 'locality' + '/locality',
     method: 'post',
     data
   })
 }
 export function addNewCollector(data) {
   return request({
-    url: api_prefix + 'person' + '/collectors/',
+    url: api_prefix + 'person' + '/collectors',
     method: 'post',
     data
   })
 }
 export function addNewDeterminer(data) {
   return request({
-    url: api_prefix + 'person' + '/determiner/',
+    url: api_prefix + 'person' + '/determiner',
     method: 'post',
     data
   })
 }
 export function addNewStaff(data) {
   return request({
-    url: api_prefix + 'person' + '/staff/',
+    url: api_prefix + 'person' + '/staff',
     method: 'post',
     data
   })
@@ -306,7 +306,7 @@ export function addNewStaff(data) {
 // ULM
 export function getULMRandom() {
   return request({
-    url: api_prefix + 'ulm' + '/ulmrandom/',
+    url: api_prefix + 'ulm' + '/ulmrandom',
     method: 'get'
   })
 }
@@ -314,7 +314,7 @@ export function getULMRandom() {
 // ULM
 export function getULM(params) {
   return request({
-    url: api_prefix + 'uln' + '/ulm/',
+    url: api_prefix + 'uln' + '/ulm',
     method: 'get',
     params
   })
@@ -322,7 +322,7 @@ export function getULM(params) {
 
 export function reportULM(params) {
   return request({
-    url: api_prefix + 'ulm' + '/reportulm/',
+    url: api_prefix + 'ulm' + '/reportulm',
     method: 'get',
     params
   })
@@ -330,7 +330,7 @@ export function reportULM(params) {
 
 export function updateULMLot(data) {
   return request({
-    url: '/updateulmrandom/',
+    url: '/updateulmrandom',
     method: 'post',
     data
   })
@@ -338,7 +338,7 @@ export function updateULMLot(data) {
 
 export function getULMLotList(params) {
   return request({
-    url: '/ulmlotlist/',
+    url: '/ulmlotlist',
     method: 'get',
     params
   })
@@ -346,7 +346,7 @@ export function getULMLotList(params) {
 
 export function downloadULMData() {
   return request({
-    url: '/ulmreportdata/',
+    url: '/ulmreportdata',
     method: 'get'
   })
 } export function downloadULMNotFoundData() {
@@ -358,14 +358,14 @@ export function downloadULMData() {
 
 export function getULMStatsUser() {
   return request({
-    url: api_prefix + 'ulm' + '/ulmstatsu/',
+    url: api_prefix + 'ulm' + '/ulmstatsu',
     method: 'get'
   })
 }
 
 export function getULMStatsReview() {
   return request({
-    url: '/ulmstatsreview/',
+    url: '/ulmstatsreview',
     method: 'get'
   })
 }
@@ -373,7 +373,7 @@ export function getULMStatsReview() {
 // Osteology
 export function getOst(params) {
   return request({
-    url: '/ost/',
+    url: '/ost',
     method: 'get',
     params
   })
@@ -381,7 +381,7 @@ export function getOst(params) {
 
 export function updateOst(data) {
   return request({
-    url: '/updateost/',
+    url: '/updateost',
     method: 'post',
     data
   })
@@ -389,7 +389,7 @@ export function updateOst(data) {
 
 export function getOstList(params) {
   return request({
-    url: '/ostlist/',
+    url: '/ostlist',
     method: 'get',
     params
   })
@@ -397,7 +397,7 @@ export function getOstList(params) {
 
 export function reportOst(params) {
   return request({
-    url: '/reportost/',
+    url: '/reportost',
     method: 'get',
     params
   })
@@ -405,14 +405,14 @@ export function reportOst(params) {
 
 export function recentAdded() {
   return request({
-    url: api_prefix + 'admin' + '/recentadded/',
+    url: api_prefix + 'admin' + '/recentadded',
     method: 'get'
   })
 }
 
 export function getReport() {
   return request({
-    url: api_prefix + 'lots' + '/validate-data/',
+    url: api_prefix + 'lots' + '/validate-data',
     method: 'get',
     responseType: 'blob'
   })
