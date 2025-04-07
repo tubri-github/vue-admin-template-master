@@ -358,7 +358,7 @@ export function downloadULMData() {
 
 export function getULMStatsUser() {
   return request({
-    url: '/ulmstatsu/',
+    url: api_prefix + 'ulm' + '/ulmstatsu/',
     method: 'get'
   })
 }
@@ -405,7 +405,15 @@ export function reportOst(params) {
 
 export function recentAdded() {
   return request({
-    url: api_prefix + 'admin' +  '/recentadded/',
+    url: api_prefix + 'admin' + '/recentadded/',
     method: 'get'
+  })
+}
+
+export function getReport() {
+  return request({
+    url: api_prefix + 'lots' + '/validate-data/',
+    method: 'get',
+    responseType: 'blob'
   })
 }

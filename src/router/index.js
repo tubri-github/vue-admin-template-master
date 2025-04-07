@@ -79,47 +79,47 @@ export const constantRoutes = [
 ]
 
 export const asyncRoutes = [
-  {
-    path: '/ulm',
-    component: Layout,
-    name: 'ULM',
-    meta: { title: 'ULM', icon: 'nested' },
-    children: [
-      {
-        path: 'jar',
-        name: 'jarsize',
-        component: () => import('@/views/jarsize/index'),
-        meta: { title: 'ULM', icon: 'user' }
-      },
-      {
-        path: 'review',
-        name: 'review',
-        component: () => import('@/views/jarsize/reviewlist'),
-        meta: { title: 'Review', icon: 'user', roles: ['admin'] }
-      }
-    ]
-  },
-
-  {
-    path: '/ost',
-    component: Layout,
-    name: 'Osteology',
-    meta: { title: 'Osteology', icon: 'user' },
-    children: [
-      {
-        path: 'ost',
-        name: 'osteology',
-        component: () => import('@/views/Lot/osteology/index'),
-        meta: { title: 'Osteology', icon: 'user' }
-      }
-      // {
-      //   path: 'review',
-      //   name: 'review',
-      //   component: () => import('@/views/Lot/osteology/reviewlist'),
-      //   meta: { title: 'Review', icon: 'user', roles:['admin']}
-      // },
-    ]
-  },
+  // {
+  //   path: '/ulm',
+  //   component: Layout,
+  //   name: 'ULM',
+  //   meta: { title: 'ULM', icon: 'nested' },
+  //   children: [
+  //     {
+  //       path: 'jar',
+  //       name: 'jarsize',
+  //       component: () => import('@/views/jarsize/index'),
+  //       meta: { title: 'ULM', icon: 'user' }
+  //     },
+  //     {
+  //       path: 'review',
+  //       name: 'review',
+  //       component: () => import('@/views/jarsize/reviewlist'),
+  //       meta: { title: 'Review', icon: 'user', roles: ['admin'] }
+  //     }
+  //   ]
+  // },
+  //
+  // {
+  //   path: '/ost',
+  //   component: Layout,
+  //   name: 'Osteology',
+  //   meta: { title: 'Osteology', icon: 'user' },
+  //   children: [
+  //     {
+  //       path: 'ost',
+  //       name: 'osteology',
+  //       component: () => import('@/views/Lot/osteology/index'),
+  //       meta: { title: 'Osteology', icon: 'user' }
+  //     }
+  //     // {
+  //     //   path: 'review',
+  //     //   name: 'review',
+  //     //   component: () => import('@/views/Lot/osteology/reviewlist'),
+  //     //   meta: { title: 'Review', icon: 'user', roles:['admin']}
+  //     // },
+  //   ]
+  // },
 
   {
     path: '/lot',
@@ -233,14 +233,15 @@ export const asyncRoutes = [
         path: 'add',
         name: 'AddPerson',
         component: () => import('@/views/personform/index'),
-        meta: { title: 'Add', icon: 'user' }
+        meta: { title: 'Person', icon: 'user' }
       },
-      {
-        path: 'search',
-        name: 'SearchPerson',
-        // component: () => import('@/views/Lot/LotSearch/index'),
-        meta: { title: 'Search', icon: 'form' }
-      }]
+      // {
+      //   path: 'search',
+      //   name: 'SearchPerson',
+      //   // component: () => import('@/views/Lot/LotSearch/index'),
+      //   meta: { title: 'Search', icon: 'form' }
+      // }
+      ]
   },
 
   // 404 page must be placed at the end !!!

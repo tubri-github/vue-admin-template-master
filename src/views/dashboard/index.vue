@@ -1,9 +1,8 @@
 <template>
   <div class="dashboard-container">
-    <div class="report-link">
-      <a target="_blank" href="https://docs.google.com/spreadsheets/d/1V8x0W_QpqW22-d3e8klgXtUDZJKCkrNp-rbHeYsrqhM/edit?usp=sharing">
-        <i class="el-icon-document"></i> View Full Report
-      </a>
+    <div class="report-link" @click="downloadReport" :class="{ 'is-loading': isReportLoading }">
+      <i :class="isReportLoading ? 'el-icon-loading' : 'el-icon-document'"></i>
+      {{ isReportLoading ? 'Generating Report...' : 'View Full Report' }}
     </div>
 
     <!-- 新项目卡片组 -->
@@ -220,7 +219,7 @@
 </template>
 
 <script>
-import {getLoanNumbersByYear, getSpeciesStats, getLotNumbersByYear, getLocalityNumbersByYear} from '@/api/table'
+import {getLoanNumbersByYear, getSpeciesStats, getLotNumbersByYear, getLocalityNumbersByYear, getReport} from '@/api/table'
 import {mapGetters} from 'vuex'
 import countTo from 'vue-count-to'
 import store from '@/store'
@@ -261,6 +260,7 @@ export default {
   },
   data() {
     return {
+      isReportLoading: false,
       showStats: (store.getters.roles.indexOf('admin') !== -1),
       loading: false,
       localityNumberCurrentYear: 0,
@@ -323,6 +323,60 @@ export default {
     this.loadSavedComponents()
   },
   methods: {
+
+    downloadReport() {
+      // Set loading state
+      this.isReportLoading = true;
+
+      // Show loading notification
+      const loadingNotification = this.$notify({
+        title: 'Report Generation',
+        message: 'Your report is being generated. This may take a moment...',
+        duration: 0, // Don't auto-close
+        type: 'info',
+        position: 'top-right'
+      });
+
+      getReport()
+        .then(response => {
+          // Handle successful download
+          const blob = new Blob([response.data], {
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          });
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = 'data_validation_report.xlsx';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+
+          // Close loading notification and show success
+          loadingNotification.close();
+          this.$notify({
+            title: 'Success',
+            message: 'Report downloaded successfully',
+            type: 'success',
+            duration: 3000
+          });
+        })
+        .catch(error => {
+          console.error('Error downloading report:', error);
+
+          // Close loading notification and show error
+          loadingNotification.close();
+          this.$notify.error({
+            title: 'Error',
+            message: 'Failed to download report. Please try again later.',
+            duration: 5000
+          });
+        })
+        .finally(() => {
+          this.isReportLoading = false;
+        });
+    },
+
     formatNumber(num) {
       return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
     },
@@ -529,6 +583,32 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.report-link {
+  margin-bottom: 20px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 15px;
+  color: #409EFF;
+  text-decoration: none;
+  transition: all 0.3s;
+  cursor: pointer;
+  padding: 8px 15px;
+  border-radius: 4px;
+  background-color: rgba(64, 158, 255, 0.1);
+
+  &:hover {
+    background-color: rgba(64, 158, 255, 0.2);
+  }
+
+  &.is-loading {
+    opacity: 0.8;
+    pointer-events: none;
+  }
+
+  i {
+    margin-right: 8px;
+  }
+}
 // 整体容器样式
 .dashboard-container {
   padding: 24px;
