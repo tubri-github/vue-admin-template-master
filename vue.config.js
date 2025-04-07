@@ -24,7 +24,7 @@ module.exports = {
    * In most cases please use '/' !!!
    * Detail: https://cli.vuejs.org/config/#publicpath
    */
-  publicPath: '/vue-test/',
+  publicPath: '/TUMMT/',
   outputDir: 'dist',
   assetsDir: 'static',
   lintOnSave: process.env.NODE_ENV === 'development',
@@ -38,7 +38,7 @@ module.exports = {
     },
     proxy: {
       '/': {
-        target: 'http://localhost:8000/',
+        target: 'http://localhost:6000/',
         changeOrigin: true,
         pathRewrite: {
           '^/': ''
