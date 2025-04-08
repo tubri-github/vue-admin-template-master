@@ -158,11 +158,11 @@
 
         <!-- Action Toolbar (moved to top left) -->
         <div class="action-toolbar">
-          <el-tooltip content="Add New" placement="top">
-            <el-button type="primary" class="action-icon-btn" @click="handleCreate">
-              <i class="el-icon-plus" />
-            </el-button>
-          </el-tooltip>
+<!--          <el-tooltip content="Add New" placement="top">-->
+<!--            <el-button type="primary" class="action-icon-btn" @click="handleCreate">-->
+<!--              <i class="el-icon-plus" />-->
+<!--            </el-button>-->
+<!--          </el-tooltip>-->
 
           <el-dropdown trigger="click" @command="handleExport">
             <el-tooltip content="Export" placement="top">
@@ -1126,9 +1126,38 @@ export default {
 
     // Print labels
     printPartialLabels(type) {
-      if (type === 'Full') { this.catalogList = this.list } else if (type === 'Filtered') { this.catalogList = this.$refs.table.tableData }
+      if (type === 'Full') {
+        // Print all data matching current search conditions
+        this.$message({
+          message: 'Preparing to print all data, please wait...',
+          type: 'info'
+        })
+        this.catalogList = this.list
+      } else if (type === "Filtered") {
+        // Check if the table reference exists first
+        if (!this.$refs.table) {
+          this.$message.error('Table reference not found')
+          return
+        }
 
-      this.$set(this.printObj, 'id', 'printPartials')
+        // Get filtered data from the Element UI table component
+        const filteredData = this.$refs.table.tableData
+
+        if (!filteredData || filteredData.length === 0) {
+          this.$message.warning('No filtered data to print')
+          return
+        }
+
+        this.$message({
+          message: 'Preparing to print filtered data, please wait...',
+          type: 'info'
+        })
+
+        // Set filtered data for printing
+        this.catalogList = filteredData
+      }
+
+      this.$set(this.printObj, "id", "printPartials")
       this.printDiablogVisible = true
 
       // Add a short delay to ensure data is loaded
@@ -1658,27 +1687,70 @@ export default {
           'State', 'Lon', 'Lat'
         ]
 
-        const data = this.formatJson(filterVal, type)
+        let data = []
 
+        if (type === "Full") {
+          // Export all data matching current search conditions
+          this.$message({
+            message: 'Preparing to export all data, please wait...',
+            type: 'info'
+          })
+          data = this.formatExportJson(filterVal, this.list)
+        } else if (type === "Filtered") {
+          // For "Filtered" type, we need a different approach
+          // First check if the table reference exists
+          if (!this.$refs.table) {
+            this.$message.error('Table reference not found')
+            this.downloadLoading = false
+            return
+          }
+
+          this.$message({
+            message: 'Preparing to export filtered data, please wait...',
+            type: 'info'
+          })
+
+          // In Element UI's el-table, the filtered data is accessible via tableData property
+          const filteredData = this.$refs.table.tableData
+
+          if (!filteredData || filteredData.length === 0) {
+            this.$message.warning('No filtered data to export')
+            this.downloadLoading = false
+            return
+          }
+
+          data = this.formatExportJson(filterVal, filteredData)
+        }
+
+        // Export the data
         excel.export_json_to_excel({
           header: tHeader,
-          data,
-          filename: 'Specimen-Catalog-' + new Date().toISOString().split('T')[0]
+          data: data,
+          filename: `Specimen-Catalog-${new Date().toISOString().split('T')[0]}`
         })
 
         this.downloadLoading = false
-
-        this.$notify({
-          title: 'Success',
-          message: 'Export completed successfully',
-          type: 'success',
-          duration: 2000
+        this.$message({
+          message: 'Export successful!',
+          type: 'success'
         })
       }).catch(error => {
-        console.error('Error exporting data:', error)
-        this.$message.error('Failed to export data')
         this.downloadLoading = false
+        this.$message.error('Failed to load export module')
+        console.error('Export2Excel loading error:', error)
       })
+    },
+
+    formatExportJson(filterVal, data) {
+      return data.map(v => filterVal.map(j => {
+        if (j === 'StartDate') {
+          // Date format conversion
+          return v[j] ? parseTime(new Date(Date.parse(v[j])), '{y}-{m}-{d}') : ''
+        } else {
+          // Handle possible null values
+          return v[j] != null ? v[j] : ''
+        }
+      }))
     },
 
     // Format JSON for export

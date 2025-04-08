@@ -178,7 +178,7 @@ export const asyncRoutes = [
         path: 'search',
         name: 'SearchLocality',
         component: () => import('@/views/Locality/LocalitySearch/Search'),
-        meta: { title: 'Search', icon: 'form' },
+        meta: { title: 'Search', icon: 'form' }
       }
     ]
   },

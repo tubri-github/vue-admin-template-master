@@ -173,6 +173,13 @@ export function getLocality(params) {
     params
   })
 }
+export function getLocalityes(params) {
+  return request({
+    url: api_prefix + 'search' + '/locality',
+    method: 'get',
+    params
+  })
+}
 
 export function getJarSizes(params) {
   return request({
