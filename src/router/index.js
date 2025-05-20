@@ -234,6 +234,12 @@ export const asyncRoutes = [
         name: 'uploadulm',
         component: () => import('@/views/fileprocessor/ImportWizard'),
         meta: { title: 'FileUpload', icon: 'tree' }
+      },
+      {
+        path: 'review',
+        name: 'reviewulm',
+        component: () => import('@/views/fileprocessor/VerbatimWorkspace'),
+        meta: { title: 'BatchReview', icon: 'tree' }
       }
       // {
       //   path: 'review',

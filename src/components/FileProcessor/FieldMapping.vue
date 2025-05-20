@@ -207,18 +207,18 @@
 
       </div>
 
-      <!-- Field number configuration alert -->
-      <el-alert
-        v-if="showFieldNumberAlert"
-        title="Field Number Configuration"
-        type="info"
-        :closable="false"
-        show-icon
-      >
-        <template slot>
-          Field numbers will be handled in the next step based on your mapping selection.
-        </template>
-      </el-alert>
+<!--      &lt;!&ndash; Field number configuration alert &ndash;&gt;-->
+<!--      <el-alert-->
+<!--        v-if="showFieldNumberAlert"-->
+<!--        title="Field Number Configuration"-->
+<!--        type="info"-->
+<!--        :closable="false"-->
+<!--        show-icon-->
+<!--      >-->
+<!--        <template slot>-->
+<!--          Field numbers will be handled in the next step based on your mapping selection.-->
+<!--        </template>-->
+<!--      </el-alert>-->
 
       <!-- Validation summary -->
       <div v-if="validationSummary" class="validation-summary">

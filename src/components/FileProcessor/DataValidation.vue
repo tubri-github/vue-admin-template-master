@@ -548,7 +548,6 @@ export default {
 
         // Occurrence fields
         collectionDate: 'Collection Date',
-        fieldNumber: 'Field Number',
         totalNumber: 'Total Number',
         remarks: 'Remarks',
 
@@ -559,6 +558,7 @@ export default {
 
         // Locality fields
         localityId: 'Locality ID',
+        fieldNumber: 'Field Number',
         localityString: 'Locality String',
         country: 'Country',
         state: 'State/Province',
@@ -567,6 +567,7 @@ export default {
         waterbody: 'Water Body',
         latitude: 'Latitude',
         longitude: 'Longitude',
+
 
         // Storage fields
         storage: 'Storage',

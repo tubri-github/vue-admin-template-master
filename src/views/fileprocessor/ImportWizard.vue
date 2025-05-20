@@ -101,10 +101,16 @@
           @error="handleImportError"
         />
 
+<!--        <import-complete-->
+<!--          v-else-->
+<!--          :import-result="importResult"-->
+<!--          @goto-field-number-management="goToFieldNumberManagement"-->
+<!--          @view-records="viewImportedRecords"-->
+<!--          @import-more="resetWizard"-->
+<!--        />        -->
         <import-complete
           v-else
           :import-result="importResult"
-          @goto-field-number-management="goToFieldNumberManagement"
           @view-records="viewImportedRecords"
           @import-more="resetWizard"
         />
@@ -251,11 +257,11 @@ export default {
         species: ['species'],
         collectionDate: ['collection_date', 'date_collected', 'date', 'collection date'],
         localityId: ['locality_id', 'locality id', 'location_id'],
-        fieldNumber: ['field_number', 'field number', 'field_no', 'ulm number', 'ulm_number'],
+        fieldNumber: ['field_number', 'field number', 'field_no'],
         totalNumber: ['total_number', 'total number', 'count', 'number'],
         storage: ['storage', 'tank', 'location'],
         jarSize: ['jar_size', 'jar size', 'jar_size_type', 'jar'],
-        prevNumber: ['prev_number', 'previous_number', 'old_number'],
+        prevNumber: ['prev_number', 'previous_number', 'old_number', 'ulm number', 'ulm_number'],
         inventory: ['inventory', 'inventory_number'],
         remarks: ['remarks', 'notes', 'comment', 'comments'],
         localityString: ['locality_string', 'locality string', 'locality', 'location'],
@@ -429,11 +435,11 @@ export default {
       }
     },
 
-    // Navigate to Field Number Management
-    goToFieldNumberManagement() {
-      this.$message.info('Redirecting to Field Number Management Center...')
-      // In a real application, this would redirect to another page
-    },
+    // // Navigate to Field Number Management
+    // goToFieldNumberManagement() {
+    //   this.$message.info('Redirecting to Field Number Management Center...')
+    //   // In a real application, this would redirect to another page
+    // },
 
     // View imported records
     viewImportedRecords() {
