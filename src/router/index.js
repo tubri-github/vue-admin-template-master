@@ -149,8 +149,8 @@ export const asyncRoutes = [
             path: 'basic_search',
             name: 'BaseSearchLot',
             component: () => import('@/views/Lot/baseSearch/index'),
-            meta: { title: 'Basic Search', icon: 'form' },
-          },
+            meta: { title: 'Basic Search', icon: 'form' }
+          }
           // {
           //   path: 'adv_search',
           //   name: 'AdvancedSearchLot',
@@ -166,7 +166,7 @@ export const asyncRoutes = [
     path: '/locality',
     component: Layout,
     name: 'Locality',
-    meta: { title: 'Locality', icon: 'locality', roles:['admin'] },
+    meta: { title: 'Locality', icon: 'locality', roles: ['admin'] },
     children: [
       {
         path: 'add',
@@ -187,7 +187,7 @@ export const asyncRoutes = [
     path: '/loan',
     component: Layout,
     name: 'Loan',
-    meta: { title: 'Loan', icon: 'loan', roles:['admin'] },
+    meta: { title: 'Loan', icon: 'loan', roles: ['admin'] },
     children: [
       {
         path: 'add',
@@ -207,14 +207,34 @@ export const asyncRoutes = [
     path: '/taxonomic',
     component: Layout,
     name: 'Taxonomic',
-    meta: { title: 'Taxonomic', icon: 'tree', roles:['admin']},
+    meta: { title: 'Taxonomic', icon: 'tree', roles: ['admin'] },
     children: [
       {
         path: 'add',
         name: 'addTaxon',
         component: () => import('@/views/taxonomic/taxonomicform'),
         meta: { title: 'Taxonomic', icon: 'tree' }
-      },
+      }
+      // {
+      //   path: 'review',
+      //   name: 'review',
+      //   component: () => import('@/views/Lot/osteology/reviewlist'),
+      //   meta: { title: 'Review', icon: 'user', roles:['admin']}
+      // },
+    ]
+  },
+  {
+    path: '/fileprocessor',
+    component: Layout,
+    name: 'FileProcessor',
+    meta: { title: 'FileProcessor', icon: 'tree', roles: ['admin'] },
+    children: [
+      {
+        path: 'upload',
+        name: 'uploadulm',
+        component: () => import('@/views/fileprocessor/ImportWizard'),
+        meta: { title: 'FileUpload', icon: 'tree' }
+      }
       // {
       //   path: 'review',
       //   name: 'review',
@@ -227,21 +247,21 @@ export const asyncRoutes = [
     path: '/Person',
     component: Layout,
     name: 'Person',
-    meta: { title: 'Person', icon: 'user', roles:['admin'] },
+    meta: { title: 'Person', icon: 'user', roles: ['admin'] },
     children: [
       {
         path: 'add',
         name: 'AddPerson',
         component: () => import('@/views/personform/index'),
         meta: { title: 'Person', icon: 'user' }
-      },
+      }
       // {
       //   path: 'search',
       //   name: 'SearchPerson',
       //   // component: () => import('@/views/Lot/LotSearch/index'),
       //   meta: { title: 'Search', icon: 'form' }
       // }
-      ]
+    ]
   },
 
   // 404 page must be placed at the end !!!
