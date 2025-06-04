@@ -1,6 +1,6 @@
 <!--
   SpeciesVerification.vue
-  物种验证组件 - 处理 verbatim taxonomic 到正式 taxonomic 的匹配
+  物种验证组件 - 修复显示问题
 -->
 <template>
   <div class="species-verification">
@@ -31,11 +31,6 @@
             </div>
           </el-col>
         </el-row>
-
-        <div v-if="verbatimData.originalText" class="original-text">
-          <label>Original Text:</label>
-          <span class="original-text-content">{{verbatimData.originalText}}</span>
-        </div>
       </div>
 
       <div v-else class="no-verbatim">
@@ -44,12 +39,43 @@
       </div>
     </el-card>
 
+    <!-- 系统建议展示 -->
+    <el-card v-if="hasValidSuggestion" class="suggestion-card">
+      <div slot="header" class="card-header">
+        <span><i class="el-icon-magic-stick"></i> System Suggestion</span>
+        <el-tag :type="getSuggestionTagType()" size="small">
+          {{matchSuggestions.status}} ({{matchSuggestions.confidence}}%)
+        </el-tag>
+      </div>
+
+      <div class="suggestion-content">
+        <div class="suggestion-info">
+          <div class="suggestion-name">{{getSuggestedSpeciesName()}}</div>
+          <div class="suggestion-details">
+            <span class="detail-item">ID: {{getSuggestedTaxonId()}}</span>
+            <span class="detail-item">Confidence: {{matchSuggestions.confidence}}%</span>
+            <span class="detail-item">Type: {{matchSuggestions.status}}</span>
+          </div>
+          <div class="suggestion-actions">
+            <el-button
+              type="primary"
+              size="small"
+              @click="applySuggestion"
+              :disabled="matchSuggestions.suggestionApplied">
+              <i class="el-icon-check"></i>
+              {{matchSuggestions.suggestionApplied ? 'Applied' : 'Apply Suggestion'}}
+            </el-button>
+          </div>
+        </div>
+      </div>
+    </el-card>
+
     <!-- 当前匹配状态 -->
     <el-card class="current-match-card">
       <div slot="header" class="card-header">
         <span><i class="el-icon-check"></i> Current Match</span>
         <el-button
-          v-if="record.taxonId"
+          v-if="currentMatchedSpecies"
           size="mini"
           type="danger"
           @click="clearMatch">
@@ -57,16 +83,13 @@
         </el-button>
       </div>
 
-      <div v-if="record.taxonId && record.taxonomic" class="current-match">
+      <div v-if="currentMatchedSpecies" class="current-match">
         <div class="match-info">
-          <div class="match-name">{{record.taxonomic.FullName}}</div>
+          <div class="match-name">{{currentMatchedSpecies.FullName}}</div>
           <div class="match-details">
-            <span class="detail-item">ID: {{record.taxonomic.TaxonID}}</span>
-            <span class="detail-item">Family: {{record.taxonomic.Family}}</span>
-            <span class="detail-item">Author: {{record.taxonomic.Author || 'N/A'}}</span>
-            <span class="detail-item" :class="{'status-valid': record.taxonomic.Status === 'Valid'}">
-              Status: {{record.taxonomic.Status}}
-            </span>
+            <span class="detail-item">ID: {{currentMatchedSpecies.TaxonID}}</span>
+            <span class="detail-item" v-if="currentMatchedSpecies.Family">Family: {{currentMatchedSpecies.Family}}</span>
+            <span class="detail-item" v-if="currentMatchedSpecies.Author">Author: {{currentMatchedSpecies.Author}}</span>
           </div>
         </div>
       </div>
@@ -80,14 +103,13 @@
     <!-- 搜索和匹配区域 -->
     <el-card class="search-card">
       <div slot="header" class="card-header">
-        <span><i class="el-icon-search"></i> Search & Match Species</span>
+        <span><i class="el-icon-search"></i> Search Species</span>
         <el-button
           size="mini"
-          @click="autoMatch"
-          :loading="autoMatching"
-          :disabled="!verbatimData">
-          <i class="el-icon-magic-stick"></i>
-          Auto Match
+          type="success"
+          @click="showCreateSpeciesDialog">
+          <i class="el-icon-plus"></i>
+          Create New Species
         </el-button>
       </div>
 
@@ -107,15 +129,6 @@
             Search
           </el-button>
         </el-input>
-
-        <!-- 搜索过滤器 -->
-        <div class="search-filters">
-          <el-checkbox-group v-model="searchFilters" size="small">
-            <el-checkbox label="Valid" disabled>Only Valid Species</el-checkbox>
-            <el-checkbox label="ExactMatch">Exact Match Only</el-checkbox>
-            <el-checkbox label="IncludeAuthor">Include Author in Search</el-checkbox>
-          </el-checkbox-group>
-        </div>
       </div>
 
       <!-- 搜索结果 -->
@@ -135,7 +148,7 @@
 
         <div class="results-list">
           <div
-            v-for="(species, index) in paginatedResults"
+            v-for="species in paginatedResults"
             :key="species.TaxonID"
             class="result-item"
             :class="{'selected': selectedSpecies && selectedSpecies.TaxonID === species.TaxonID}"
@@ -143,19 +156,12 @@
 
             <div class="result-content">
               <div class="result-name">
-                <span class="full-name">{{species.FullName}}</span>
-                <el-tag
-                  :type="species.Status === 'Valid' ? 'success' : 'warning'"
-                  size="mini">
-                  {{species.Status}}
-                </el-tag>
+                <span class="full-name">{{species.FullScientificName}}</span>
               </div>
 
               <div class="result-details">
-                <span class="detail">Family: {{species.Family}}</span>
-                <span class="detail">Genus: {{species.Genus}}</span>
-                <span class="detail">Species: {{species.Species}}</span>
-                <span v-if="species.Author" class="detail">Author: {{species.Author}}</span>
+                <span class="detail" v-if="species.FamilyName">Family: {{species.FamilyName}}</span>
+                <span class="detail">ID: {{species.TaxonID}}</span>
               </div>
 
               <div class="result-actions">
@@ -166,26 +172,36 @@
                   <i class="el-icon-check"></i>
                   Select
                 </el-button>
-                <el-button
-                  size="mini"
-                  @click.stop="viewSpeciesDetails(species)">
-                  <i class="el-icon-view"></i>
-                  Details
-                </el-button>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 无搜索结果 -->
-      <div v-else-if="hasSearched && !searching" class="no-results">
+      <!-- 无搜索结果或者搜索提示 -->
+      <div v-if="hasSearched && !searching && searchResults.length === 0" class="no-results">
         <i class="el-icon-warning-outline"></i>
         <div class="no-results-text">
-          No matching species found.
+          No matching species found for "{{searchQuery}}".
+          <br>
           <el-button type="text" @click="showCreateSpeciesDialog">
+            <i class="el-icon-plus"></i>
             Create New Species
           </el-button>
+        </div>
+      </div>
+
+      <!-- 搜索提示（未搜索时显示） -->
+      <div v-if="!hasSearched && !searching" class="search-prompt">
+        <div class="search-prompt-content">
+          <i class="el-icon-search"></i>
+          <p>Enter a scientific name, genus, or family to search for species.</p>
+          <p class="search-prompt-sub">
+            Can't find what you're looking for?
+            <el-button type="text" @click="showCreateSpeciesDialog" class="create-link">
+              Create a new species
+            </el-button>
+          </p>
         </div>
       </div>
     </el-card>
@@ -202,30 +218,17 @@
         @cancel="showCreateDialog = false"
       />
     </el-dialog>
-
-    <!-- 物种详情对话框 -->
-    <el-dialog
-      title="Species Details"
-      :visible.sync="showDetailsDialog"
-      width="600px">
-
-      <species-details-view
-        v-if="selectedSpeciesForDetails"
-        :species="selectedSpeciesForDetails"
-      />
-    </el-dialog>
   </div>
 </template>
 
 <script>
 import CreateSpeciesForm from '@/components/RecordsProcessor/CreateSpeciesForm.vue';
-import SpeciesDetailsView from '@/components/RecordsProcessor/SpeciesDetailsView.vue';
+import { addTaxon, getTaxon } from '@/api/table';
 
 export default {
   name: 'SpeciesVerification',
   components: {
-    CreateSpeciesForm,
-    SpeciesDetailsView
+    CreateSpeciesForm
   },
   props: {
     record: {
@@ -235,6 +238,10 @@ export default {
     verbatimData: {
       type: Object,
       default: null
+    },
+    matchSuggestions: {
+      type: Object,
+      default: null
     }
   },
   data() {
@@ -242,10 +249,8 @@ export default {
       // 搜索相关
       searchQuery: '',
       searchResults: [],
-      searchFilters: ['Valid'],
       searching: false,
       hasSearched: false,
-      autoMatching: false,
 
       // 分页
       currentPage: 1,
@@ -253,11 +258,9 @@ export default {
 
       // 选择的物种
       selectedSpecies: null,
-      selectedSpeciesForDetails: null,
 
       // 对话框
       showCreateDialog: false,
-      showDetailsDialog: false,
 
       // 去抖计时器
       searchDebouncer: null
@@ -268,21 +271,109 @@ export default {
       const start = (this.currentPage - 1) * this.pageSize;
       const end = start + this.pageSize;
       return this.searchResults.slice(start, end);
+    },
+
+    // 判断是否有有效的系统建议
+    hasValidSuggestion() {
+      return this.matchSuggestions &&
+        this.matchSuggestions.hasSuggestion &&
+        this.getSuggestedTaxonId();
+    },
+
+    // 当前匹配的物种信息
+    currentMatchedSpecies() {
+      // 优先显示用户手动选择的物种
+      if (this.record.taxonId && this.record.taxonomic) {
+        return this.record.taxonomic;
+      }
+
+      // 如果没有手动选择，但有系统建议，显示建议的物种
+      if (this.hasValidSuggestion) {
+        return {
+          TaxonID: this.getSuggestedTaxonId(),
+          FullName: this.getSuggestedSpeciesName(),
+          Family: this.getSuggestedFamily(),
+          Genus: this.getSuggestedGenus(),
+          Species: this.getSuggestedSpecies(),
+          Author: this.getSuggestedAuthor()
+        };
+      }
+
+      return null;
     }
   },
   watch: {
     verbatimData: {
       immediate: true,
       handler(newValue) {
-        if (newValue && this.shouldAutoMatch()) {
+        if (newValue && this.shouldInitializeSearch()) {
           this.initializeSearch();
         }
       }
     }
   },
   methods: {
-    // 判断是否应该自动匹配
-    shouldAutoMatch() {
+    // 获取建议的物种名
+    getSuggestedSpeciesName() {
+      // 根据实际数据结构获取
+      if (this.matchSuggestions && this.matchSuggestions.match_details && this.matchSuggestions.match_details.db_name) {
+        return this.matchSuggestions.match_details.db_name;
+      }
+
+      // 备选方案：从 suggested_data 获取
+      if (this.matchSuggestions && this.matchSuggestions.suggested_data) {
+        const genus = this.matchSuggestions.suggested_data.genus;
+        const species = this.matchSuggestions.suggested_data.species;
+        if (genus && species) {
+          return `${genus} ${species}`;
+        }
+      }
+
+      return 'Unknown species';
+    },
+
+    // 获取建议的分类ID
+    getSuggestedTaxonId() {
+      if (this.matchSuggestions && this.matchSuggestions.suggested_taxon_id) {
+        return this.matchSuggestions.suggested_taxon_id;
+      }
+      return null;
+    },
+
+    // 获取建议的科名
+    getSuggestedFamily() {
+      if (this.matchSuggestions && this.matchSuggestions.suggested_data && this.matchSuggestions.suggested_data.family) {
+        return this.matchSuggestions.suggested_data.family;
+      }
+      return null;
+    },
+
+    // 获取建议的属名
+    getSuggestedGenus() {
+      if (this.matchSuggestions && this.matchSuggestions.suggested_data && this.matchSuggestions.suggested_data.genus) {
+        return this.matchSuggestions.suggested_data.genus;
+      }
+      return null;
+    },
+
+    // 获取建议的种名
+    getSuggestedSpecies() {
+      if (this.matchSuggestions && this.matchSuggestions.suggested_data && this.matchSuggestions.suggested_data.species) {
+        return this.matchSuggestions.suggested_data.species;
+      }
+      return null;
+    },
+
+    // 获取建议的作者
+    getSuggestedAuthor() {
+      if (this.matchSuggestions && this.matchSuggestions.suggested_data && this.matchSuggestions.suggested_data.author) {
+        return this.matchSuggestions.suggested_data.author;
+      }
+      return null;
+    },
+
+    // 判断是否应该初始化搜索
+    shouldInitializeSearch() {
       return !this.record.taxonId && this.verbatimData;
     },
 
@@ -298,14 +389,35 @@ export default {
       }
     },
 
+    // 获取建议标签类型
+    getSuggestionTagType() {
+      if (!this.matchSuggestions) return '';
+
+      const confidence = this.matchSuggestions.confidence || 0;
+      if (confidence >= 90) return 'success';
+      if (confidence >= 70) return 'warning';
+      return 'info';
+    },
+
+    // 应用系统建议
+    applySuggestion() {
+      if (this.hasValidSuggestion) {
+        const suggestedTaxon = {
+          TaxonID: this.getSuggestedTaxonId(),
+          FullName: this.getSuggestedSpeciesName(),
+          Family: this.getSuggestedFamily(),
+          Genus: this.getSuggestedGenus(),
+          Species: this.getSuggestedSpecies(),
+          Author: this.getSuggestedAuthor()
+        };
+
+        this.confirmMatch(suggestedTaxon);
+      }
+    },
+
     // 处理搜索输入
     handleSearchInput() {
-      // 清除之前的去抖计时器
-      if (this.searchDebouncer) {
-        clearTimeout(this.searchDebouncer);
-      }
-
-      // 设置新的去抖计时器
+      clearTimeout(this.searchDebouncer);
       this.searchDebouncer = setTimeout(() => {
         if (this.searchQuery.length >= 2) {
           this.performSearch();
@@ -325,15 +437,17 @@ export default {
       this.hasSearched = true;
 
       try {
-        const response = await this.$api.searchTaxonomic({
-          query: this.searchQuery,
-          filters: this.searchFilters,
-          limit: 50
+        const response = await getTaxon({
+          pageSize: 50,
+          pageNumber: 1,
+          keyWord: this.searchQuery
         });
 
-        if (response.code === 20000) {
-          this.searchResults = response.data.items || [];
+        if (response && response.data && response.data.items) {
+          this.searchResults = response.data.items;
           this.currentPage = 1;
+        } else {
+          this.searchResults = [];
         }
       } catch (error) {
         this.$message.error('Search failed');
@@ -344,35 +458,6 @@ export default {
       }
     },
 
-    // 自动匹配
-    async autoMatch() {
-      if (!this.verbatimData) return;
-
-      this.autoMatching = true;
-      try {
-        const response = await this.$api.autoMatchSpecies({
-          family: this.verbatimData.verbatimFamily,
-          genus: this.verbatimData.verbatimGenus,
-          species: this.verbatimData.verbatimSpecies
-        });
-
-        if (response.code === 20000 && response.data.matches && response.data.matches.length > 0) {
-          const bestMatch = response.data.matches[0];
-          this.confirmMatch(bestMatch.taxon);
-          this.$message.success(`Auto matched: ${bestMatch.taxon.FullName} (Confidence: ${Math.round(bestMatch.confidence * 100)}%)`);
-        } else {
-          this.$message.warning('No suitable auto match found');
-          // 如果自动匹配失败，执行手动搜索
-          this.performSearch();
-        }
-      } catch (error) {
-        this.$message.error('Auto match failed');
-        console.error(error);
-      } finally {
-        this.autoMatching = false;
-      }
-    },
-
     // 选择物种
     selectSpecies(species) {
       this.selectedSpecies = species;
@@ -380,7 +465,16 @@ export default {
 
     // 确认匹配
     confirmMatch(species) {
-      this.$emit('species-selected', species);
+      const taxonomicData = {
+        TaxonID: species.TaxonID,
+        FullName: species.FullScientificName || species.FullName,
+        Family: species.FamilyName || species.Family,
+        Genus: species.Genus,
+        Species: species.Species,
+        Author: species.Author
+      };
+
+      this.$emit('species-selected', taxonomicData);
       this.selectedSpecies = species;
     },
 
@@ -389,21 +483,44 @@ export default {
       this.$emit('species-selected', { TaxonID: null });
     },
 
-    // 查看物种详情
-    viewSpeciesDetails(species) {
-      this.selectedSpeciesForDetails = species;
-      this.showDetailsDialog = true;
-    },
-
     // 显示创建物种对话框
     showCreateSpeciesDialog() {
       this.showCreateDialog = true;
     },
 
     // 处理创建新物种
-    handleCreateSpecies(speciesData) {
-      this.$emit('create-new-species', speciesData);
+    async handleCreateSpecies(speciesData) {
       this.showCreateDialog = false;
+
+      try {
+        // 调用创建物种API
+        const response = await addTaxon(speciesData);
+
+        if (response.code === 20000 && response.data.items && response.data.items.length > 0) {
+          const newTaxonId = response.data.items[0].TaxonID;
+
+          // 创建物种信息对象
+          const newSpecies = {
+            TaxonID: newTaxonId,
+            FullName: speciesData.fullScientificName,
+            Genus: speciesData.genus,
+            Species: speciesData.species,
+            Subspecies: speciesData.subspecies,
+            FamilyID: speciesData.familyID,
+            Remarks: speciesData.remarks
+          };
+
+          // 自动匹配到 Current Match
+          this.confirmMatch(newSpecies);
+
+          this.$message.success(`New species "${speciesData.fullScientificName}" created and matched successfully!`);
+        } else {
+          this.$message.error('Failed to create species: Invalid response');
+        }
+      } catch (error) {
+        console.error('Error creating species:', error);
+        this.$message.error('Failed to create new species. Please try again.');
+      }
     },
 
     // 分页处理
@@ -453,31 +570,45 @@ export default {
   font-style: italic;
 }
 
-.original-text {
-  margin-top: 15px;
-  padding-top: 15px;
-  border-top: 1px solid #e0e0e0;
-}
-
-.original-text label {
-  font-weight: 500;
-  color: #666;
-  display: inline-block;
-  width: 100px;
-}
-
-.original-text-content {
-  background: #fff;
-  padding: 8px 12px;
-  border-radius: 4px;
-  border: 1px solid #d0d0d0;
-  font-family: monospace;
-}
-
 .no-verbatim {
   text-align: center;
   color: #999;
   padding: 40px;
+}
+
+/* 建议卡片样式 */
+.suggestion-card {
+  border: 2px solid #409EFF;
+}
+
+.suggestion-content {
+  background: #f0f9ff;
+  padding: 15px;
+  border-radius: 6px;
+}
+
+.suggestion-info {
+  text-align: center;
+}
+
+.suggestion-name {
+  font-size: 18px;
+  font-weight: bold;
+  color: #1976d2;
+  margin-bottom: 10px;
+  font-style: italic;
+}
+
+.suggestion-details {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.suggestion-actions {
+  text-align: center;
 }
 
 /* 当前匹配样式 */
@@ -497,6 +628,7 @@ export default {
   font-weight: bold;
   color: #1976d2;
   margin-bottom: 10px;
+  font-style: italic;
 }
 
 .match-details {
@@ -514,12 +646,6 @@ export default {
   border: 1px solid #e0e0e0;
 }
 
-.status-valid {
-  background: #e8f5e9;
-  border-color: #4caf50;
-  color: #2e7d32;
-}
-
 .no-match {
   text-align: center;
   color: #999;
@@ -529,10 +655,6 @@ export default {
 /* 搜索区域样式 */
 .search-section {
   margin-bottom: 20px;
-}
-
-.search-filters {
-  margin-top: 10px;
 }
 
 /* 搜索结果样式 */
@@ -583,6 +705,7 @@ export default {
   font-size: 16px;
   font-weight: 500;
   color: #333;
+  font-style: italic;
 }
 
 .result-details {
@@ -612,5 +735,49 @@ export default {
 
 .no-results-text {
   margin-top: 10px;
+  line-height: 1.6;
+}
+
+/* 搜索提示样式 */
+.search-prompt {
+  text-align: center;
+  padding: 40px 20px;
+  color: #666;
+}
+
+.search-prompt-content {
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.search-prompt i {
+  font-size: 48px;
+  color: #ddd;
+  margin-bottom: 20px;
+  display: block;
+}
+
+.search-prompt p {
+  margin: 10px 0;
+  font-size: 14px;
+}
+
+.search-prompt-sub {
+  color: #999;
+  font-size: 13px;
+  margin-top: 20px !important;
+  margin-bottom: 15px !important;
+}
+
+.create-link {
+  color: #409EFF !important;
+  padding: 0 !important;
+  font-size: 13px !important;
+  text-decoration: underline;
+  margin-left: 2px;
+}
+
+.create-link:hover {
+  color: #66b1ff !important;
 }
 </style>

@@ -25,10 +25,10 @@
       <el-card class="form-section">
         <div slot="header">Basic Locality Information</div>
 
-        <el-form-item label="Locality Name" prop="LocalityName">
+        <el-form-item label="Field Number" prop="LocalityName">
           <el-input
             v-model="localityData.LocalityName"
-            placeholder="Enter locality name">
+            placeholder="Enter Field Number">
           </el-input>
         </el-form-item>
 
@@ -40,7 +40,27 @@
             placeholder="Detailed locality description">
           </el-input>
         </el-form-item>
+
+        <el-form-item label="Collector">
+          <el-input
+            v-model="localityData.LocalityString"
+            :rows="3"
+            placeholder="Collector">
+          </el-input>
+        </el-form-item>
+
+        <el-form-item label="Collection Date">
+          <el-date-picker
+            v-model="localityData.collectionDate"
+            type="date"
+            placeholder="Select collection date"
+            format="yyyy-MM-dd"
+            value-format="yyyy-MM-dd"
+            class="w-full">
+          </el-date-picker>
+        </el-form-item>
       </el-card>
+
 
       <!-- 地理信息 -->
       <el-card class="form-section">
@@ -165,47 +185,47 @@
       </el-card>
 
       <!-- 附加信息 -->
-      <el-card class="form-section">
-        <div slot="header">Additional Information</div>
+<!--      <el-card class="form-section">-->
+<!--        <div slot="header">Additional Information</div>-->
 
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="Elevation (m)">
-              <el-input-number
-                v-model="localityData.Elevation"
-                placeholder="Elevation in meters"
-                class="w-full">
-              </el-input-number>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="Depth (m)">
-              <el-input-number
-                v-model="localityData.Depth"
-                :min="0"
-                placeholder="Water depth in meters"
-                class="w-full">
-              </el-input-number>
-            </el-form-item>
-          </el-col>
-        </el-row>
+<!--        <el-row :gutter="20">-->
+<!--          <el-col :span="12">-->
+<!--            <el-form-item label="Elevation (m)">-->
+<!--              <el-input-number-->
+<!--                v-model="localityData.Elevation"-->
+<!--                placeholder="Elevation in meters"-->
+<!--                class="w-full">-->
+<!--              </el-input-number>-->
+<!--            </el-form-item>-->
+<!--          </el-col>-->
+<!--          <el-col :span="12">-->
+<!--            <el-form-item label="Depth (m)">-->
+<!--              <el-input-number-->
+<!--                v-model="localityData.Depth"-->
+<!--                :min="0"-->
+<!--                placeholder="Water depth in meters"-->
+<!--                class="w-full">-->
+<!--              </el-input-number>-->
+<!--            </el-form-item>-->
+<!--          </el-col>-->
+<!--        </el-row>-->
 
-        <el-form-item label="Habitat">
-          <el-input
-            v-model="localityData.Habitat"
-            placeholder="Habitat description">
-          </el-input>
-        </el-form-item>
+<!--        <el-form-item label="Habitat">-->
+<!--          <el-input-->
+<!--            v-model="localityData.Habitat"-->
+<!--            placeholder="Habitat description">-->
+<!--          </el-input>-->
+<!--        </el-form-item>-->
 
-        <el-form-item label="Notes">
-          <el-input
-            v-model="localityData.Notes"
-            type="textarea"
-            :rows="3"
-            placeholder="Additional notes about this locality">
-          </el-input>
-        </el-form-item>
-      </el-card>
+<!--        <el-form-item label="Notes">-->
+<!--          <el-input-->
+<!--            v-model="localityData.Notes"-->
+<!--            type="textarea"-->
+<!--            :rows="3"-->
+<!--            placeholder="Additional notes about this locality">-->
+<!--          </el-input>-->
+<!--        </el-form-item>-->
+<!--      </el-card>-->
 
       <!-- 表单操作 -->
       <div class="form-actions">
@@ -274,7 +294,7 @@ export default {
       // 表单验证规则
       formRules: {
         LocalityName: [
-          { required: true, message: 'Locality name is required', trigger: 'blur' },
+          { required: true, message: 'Field# is required', trigger: 'blur' },
           { min: 2, max: 200, message: 'Locality name should be 2-200 characters', trigger: 'blur' }
         ],
         Country: [

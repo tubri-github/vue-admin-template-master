@@ -1,133 +1,92 @@
 <!--
   CreateSpeciesForm.vue
-  创建新物种表单组件
+  创建新物种表单组件 - 更新版本
 -->
 <template>
   <div class="create-species-form">
+    <!-- Verbatim 数据提示 -->
+    <el-alert
+      v-if="verbatimData"
+      type="info"
+      :closable="false"
+      class="verbatim-info">
+      <div slot="title" class="verbatim-title">
+        <i class="el-icon-document"></i>
+        Based on verbatim data:
+      </div>
+      <div class="verbatim-details">
+        <div class="verbatim-item">
+          <span class="verbatim-label">Family:</span>
+          <span class="verbatim-value">{{verbatimData.verbatimFamily || 'Not specified'}}</span>
+        </div>
+        <div class="verbatim-item">
+          <span class="verbatim-label">Genus:</span>
+          <span class="verbatim-value">{{verbatimData.verbatimGenus || 'Not specified'}}</span>
+        </div>
+        <div class="verbatim-item">
+          <span class="verbatim-label">Species:</span>
+          <span class="verbatim-value">{{verbatimData.verbatimSpecies || 'Not specified'}}</span>
+        </div>
+      </div>
+    </el-alert>
+
     <el-form
       ref="speciesForm"
       :model="speciesData"
       :rules="formRules"
-      label-width="120px">
+      label-width="140px">
 
-      <!-- 基础信息提示 -->
-      <el-alert
-        v-if="verbatimData"
-        type="info"
-        :closable="false"
-        class="verbatim-info">
-        <div slot="title">
-          Based on verbatim data:
-          {{verbatimData.verbatimFamily}} {{verbatimData.verbatimGenus}} {{verbatimData.verbatimSpecies}}
-        </div>
-      </el-alert>
-
-      <!-- 分类信息 -->
+      <!-- 基础分类信息 -->
       <el-card class="form-section">
         <div slot="header">Taxonomic Information</div>
 
-        <el-form-item label="Family" prop="Family">
-          <el-input
-            v-model="speciesData.Family"
-            placeholder="e.g., Cyprinidae">
-          </el-input>
+        <el-form-item label="Family" prop="familyID">
+          <el-select
+            v-model="speciesData.familyID"
+            placeholder="Please search family name"
+            filterable
+            remote
+            clearable
+            class="w-full"
+            :remote-method="(query) => remoteMethod(query, 'family')"
+            :loading="remoteLoading"
+            no-match-text="No matched results found.">
+            <el-option
+              v-for="item in familyOptions"
+              :key="item.FamilyID"
+              :label="item.FamilyName"
+              :value="item.FamilyID">
+            </el-option>
+          </el-select>
         </el-form-item>
 
         <el-form-item label="Genus" prop="Genus">
           <el-input
             v-model="speciesData.Genus"
-            placeholder="e.g., Cyprinus">
+            placeholder="e.g., Cyprinus"
+            @input="updateFullName">
           </el-input>
         </el-form-item>
 
         <el-form-item label="Species" prop="Species">
           <el-input
             v-model="speciesData.Species"
-            placeholder="e.g., carpio">
+            placeholder="e.g., carpio"
+            @input="updateFullName">
           </el-input>
         </el-form-item>
 
         <el-form-item label="Subspecies">
           <el-input
             v-model="speciesData.Subspecies"
-            placeholder="Optional subspecies">
+            placeholder="Optional subspecies"
+            @input="updateFullName">
           </el-input>
         </el-form-item>
 
-        <el-form-item label="Author">
+        <el-form-item label="Remarks">
           <el-input
-            v-model="speciesData.Author"
-            placeholder="e.g., Linnaeus, 1758">
-          </el-input>
-        </el-form-item>
-      </el-card>
-
-      <!-- 状态信息 -->
-      <el-card class="form-section">
-        <div slot="header">Status Information</div>
-
-        <el-form-item label="Status" prop="Status">
-          <el-select v-model="speciesData.Status" class="w-full">
-            <el-option label="Valid" value="Valid"></el-option>
-            <el-option label="Invalid" value="Invalid"></el-option>
-            <el-option label="Synonym" value="Synonym"></el-option>
-            <el-option label="Uncertain" value="Uncertain"></el-option>
-          </el-select>
-        </el-form-item>
-
-        <el-form-item v-if="speciesData.Status === 'Synonym'" label="Valid Name">
-          <el-input
-            v-model="speciesData.ValidName"
-            placeholder="Valid taxonomic name if this is a synonym">
-          </el-input>
-        </el-form-item>
-      </el-card>
-
-      <!-- 分类等级信息 -->
-      <el-card class="form-section">
-        <div slot="header">Higher Taxonomy (Optional)</div>
-
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="Order">
-              <el-input v-model="speciesData.Order"></el-input>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="Class">
-              <el-input v-model="speciesData.Class"></el-input>
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="Phylum">
-              <el-input v-model="speciesData.Phylum"></el-input>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="Kingdom">
-              <el-input v-model="speciesData.Kingdom"></el-input>
-            </el-form-item>
-          </el-col>
-        </el-row>
-      </el-card>
-
-      <!-- 附加信息 -->
-      <el-card class="form-section">
-        <div slot="header">Additional Information</div>
-
-        <el-form-item label="Common Name">
-          <el-input
-            v-model="speciesData.CommonName"
-            placeholder="Common name in English">
-          </el-input>
-        </el-form-item>
-
-        <el-form-item label="Notes">
-          <el-input
-            v-model="speciesData.Notes"
+            v-model="speciesData.Remarks"
             type="textarea"
             :rows="3"
             placeholder="Additional notes about this species">
@@ -137,12 +96,14 @@
 
       <!-- 预览生成的全名 -->
       <el-card class="form-section">
-        <div slot="header">Generated Full Name</div>
+        <div slot="header">Generated Full Scientific Name</div>
         <div class="full-name-preview">
-          <span class="full-name">{{generateFullName()}}</span>
-          <el-tag v-if="speciesData.Status" :type="getStatusType()" size="small">
-            {{speciesData.Status}}
-          </el-tag>
+          <el-input
+            v-model="speciesData.FullScientificName"
+            placeholder="Full scientific name will be generated automatically"
+            readonly
+            class="full-name-input">
+          </el-input>
         </div>
       </el-card>
 
@@ -150,7 +111,10 @@
       <div class="form-actions">
         <el-button @click="cancelForm">Cancel</el-button>
         <el-button @click="resetForm">Reset</el-button>
-        <el-button type="primary" @click="submitForm" :loading="submitting">
+        <el-button
+          type="primary"
+          @click="submitForm"
+          :loading="submitting">
           Create Species
         </el-button>
       </div>
@@ -159,6 +123,9 @@
 </template>
 
 <script>
+import _ from 'lodash';
+import { getFamily } from '@/api/table';
+
 export default {
   name: 'CreateSpeciesForm',
   props: {
@@ -171,26 +138,23 @@ export default {
     return {
       submitting: false,
       speciesData: {
-        Family: '',
+        familyID: '',
         Genus: '',
         Species: '',
         Subspecies: '',
-        Author: '',
-        Status: 'Valid',
-        ValidName: '',
-        Order: '',
-        Class: '',
-        Phylum: '',
-        Kingdom: '',
-        CommonName: '',
-        Notes: ''
+        Remarks: '',
+        FullScientificName: ''
       },
+
+      // Family 选项
+      familyOptions: [],
+      remoteLoading: false,
+      keyWord: '',
 
       // 表单验证规则
       formRules: {
-        Family: [
-          { required: true, message: 'Family is required', trigger: 'blur' },
-          { min: 2, max: 100, message: 'Family name should be 2-100 characters', trigger: 'blur' }
+        familyID: [
+          { required: true, message: 'Family is required', trigger: 'change' }
         ],
         Genus: [
           { required: true, message: 'Genus is required', trigger: 'blur' },
@@ -201,10 +165,16 @@ export default {
           { required: true, message: 'Species is required', trigger: 'blur' },
           { min: 2, max: 100, message: 'Species name should be 2-100 characters', trigger: 'blur' },
           { pattern: /^[a-z]+$/, message: 'Species should be lowercase', trigger: 'blur' }
-        ],
-        Status: [
-          { required: true, message: 'Status is required', trigger: 'change' }
         ]
+      }
+    }
+  },
+  computed: {
+    queryParams() {
+      return {
+        pageSize: -1, // query all data
+        pageNumber: 1,
+        keyWord: this.keyWord
       }
     }
   },
@@ -217,15 +187,15 @@ export default {
   methods: {
     // 从 verbatim 数据预填充表单
     prefillFromVerbatim() {
-      if (this.verbatimData.verbatimFamily) {
-        this.speciesData.Family = this.capitalizeFirst(this.verbatimData.verbatimFamily);
-      }
       if (this.verbatimData.verbatimGenus) {
         this.speciesData.Genus = this.capitalizeFirst(this.verbatimData.verbatimGenus);
       }
       if (this.verbatimData.verbatimSpecies) {
         this.speciesData.Species = this.verbatimData.verbatimSpecies.toLowerCase();
       }
+
+      // 更新全名
+      this.updateFullName();
     },
 
     // 首字母大写
@@ -234,8 +204,8 @@ export default {
       return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
     },
 
-    // 生成全名
-    generateFullName() {
+    // 更新全名
+    updateFullName() {
       let fullName = '';
 
       if (this.speciesData.Genus) {
@@ -250,22 +220,44 @@ export default {
         fullName += ' ' + this.speciesData.Subspecies;
       }
 
-      if (this.speciesData.Author) {
-        fullName += ' ' + this.speciesData.Author;
-      }
-
-      return fullName || 'Preview will appear here...';
+      this.speciesData.FullScientificName = fullName;
     },
 
-    // 获取状态类型
-    getStatusType() {
-      const typeMap = {
-        'Valid': 'success',
-        'Invalid': 'danger',
-        'Synonym': 'warning',
-        'Uncertain': 'info'
-      };
-      return typeMap[this.speciesData.Status] || '';
+    // 远程搜索方法
+    remoteMethod(searchKey, type) {
+      if (searchKey !== "") {
+        this.remoteLoading = true;
+        this.keyWord = searchKey;
+        this.getRemote(type);
+      } else {
+        this.familyOptions = [];
+      }
+    },
+
+    // 防抖的远程搜索
+    getRemote: _.debounce(function(type) {
+      if (type === 'family') {
+        this.getFamilyList(this.queryParams);
+      }
+    }, 300),
+
+    // 获取 Family 列表
+    async getFamilyList(params) {
+      try {
+        const response = await getFamily(params);
+        this.familyOptions = [];
+        response.data.items.forEach((item) => {
+          this.familyOptions.push({
+            FamilyName: item.FamilyName,
+            FamilyID: item.FamilyID
+          });
+        });
+        this.remoteLoading = false;
+      } catch (error) {
+        console.error('Error fetching family data:', error);
+        this.$message.error('Failed to load family data');
+        this.remoteLoading = false;
+      }
     },
 
     // 提交表单
@@ -287,11 +279,18 @@ export default {
 
       this.submitting = true;
       try {
-        // 生成 FullName
-        this.speciesData.FullName = this.generateFullName();
+        // 准备提交数据，映射到后端期望的格式
+        const submitData = {
+          genus: this.speciesData.Genus,
+          species: this.speciesData.Species,
+          subspecies: this.speciesData.Subspecies || null,
+          remarks: this.speciesData.Remarks || null,
+          fullScientificName: this.speciesData.FullScientificName,
+          familyID: this.speciesData.familyID
+        };
 
-        // 触发提交事件
-        this.$emit('submit', this.speciesData);
+        // 触发提交事件，传递格式化的数据
+        this.$emit('submit', submitData);
       } catch (error) {
         this.$message.error('Failed to create species');
         console.error(error);
@@ -303,20 +302,21 @@ export default {
     // 检查重复物种
     async checkDuplicateSpecies() {
       try {
-        const response = await this.$api.checkSpeciesExists({
-          genus: this.speciesData.Genus,
-          species: this.speciesData.Species,
-          subspecies: this.speciesData.Subspecies
-        });
+        // 如果有检查重复的API，在这里调用
+        // const response = await this.$api.checkSpeciesExists({
+        //   genus: this.speciesData.Genus,
+        //   species: this.speciesData.Species,
+        //   subspecies: this.speciesData.Subspecies
+        // });
 
-        if (response.code === 20000 && response.data.exists) {
-          const result = await this.$confirm(
-            `A species with name "${this.generateFullName()}" already exists. Do you want to proceed anyway?`,
-            'Duplicate Species',
-            { type: 'warning' }
-          );
-          return !result;
-        }
+        // if (response.code === 20000 && response.data.exists) {
+        //   const result = await this.$confirm(
+        //     `A species with name "${this.speciesData.FullScientificName}" already exists. Do you want to proceed anyway?`,
+        //     'Duplicate Species',
+        //     { type: 'warning' }
+        //   );
+        //   return !result;
+        // }
       } catch (error) {
         console.error('Error checking for duplicate species:', error);
       }
@@ -341,12 +341,52 @@ export default {
 
 <style scoped>
 .create-species-form {
-  max-width: 800px;
+  max-width: 600px;
   margin: 0 auto;
 }
 
 .verbatim-info {
   margin-bottom: 20px;
+  border: 2px solid #409EFF;
+}
+
+.verbatim-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: #409EFF;
+  margin-bottom: 15px;
+}
+
+.verbatim-title i {
+  margin-right: 8px;
+}
+
+.verbatim-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.verbatim-item {
+  background: white;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid #e0f2fe;
+}
+
+.verbatim-label {
+  font-weight: 500;
+  color: #666;
+  font-size: 12px;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.verbatim-value {
+  color: #333;
+  font-style: italic;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .form-section {
@@ -362,16 +402,15 @@ export default {
   padding: 15px;
   background: #f8f9fa;
   border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
 }
 
-.full-name {
-  font-size: 18px;
+.full-name-input .el-input__inner {
+  background: white;
   font-weight: 500;
   font-style: italic;
-  color: #333;
+  font-size: 16px;
+  color: #1976d2;
+  text-align: center;
 }
 
 .form-actions {
@@ -403,6 +442,10 @@ export default {
 @media (max-width: 768px) {
   .create-species-form {
     padding: 10px;
+  }
+
+  .verbatim-details {
+    grid-template-columns: 1fr;
   }
 }
 </style>

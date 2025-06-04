@@ -29,18 +29,18 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="Field Number" prop="fieldNumber">
-              <el-input
-                v-model="localRecord.fieldNumber"
-                placeholder="Enter field number"
-                @change="handleFieldChange">
-                <template slot="append">
-                  <el-button @click="generateFieldNumber" size="mini">
-                    <i class="el-icon-refresh"></i>
-                  </el-button>
-                </template>
-              </el-input>
-            </el-form-item>
+<!--            <el-form-item label="Field Number" prop="fieldNumber">-->
+<!--              <el-input-->
+<!--                v-model="localRecord.fieldNumber"-->
+<!--                placeholder="Enter field number"-->
+<!--                @change="handleFieldChange">-->
+<!--                <template slot="append">-->
+<!--                  <el-button @click="generateFieldNumber" size="mini">-->
+<!--                    <i class="el-icon-refresh"></i>-->
+<!--                  </el-button>-->
+<!--                </template>-->
+<!--              </el-input>-->
+<!--            </el-form-item>-->
           </el-col>
         </el-row>
       </el-card>
@@ -105,11 +105,29 @@
                 @change="handleFieldChange"
                 clearable
                 class="w-full">
-                <el-option label="Small" value="Small"></el-option>
-                <el-option label="Medium" value="Medium"></el-option>
-                <el-option label="Large" value="Large"></el-option>
-                <el-option label="Extra Large" value="Extra Large"></el-option>
-                <el-option label="Custom" value="Custom"></el-option>
+                <el-option label="Unknown" value="Unknown"></el-option>
+                <el-option label="0.5L" value="0.5L"></el-option>
+                <el-option label="0.75L" value="0.75L"></el-option>
+                <el-option label="1.0L" value="1.0L"></el-option>
+                <el-option label="1L" value="1L"></el-option>
+                <el-option label="2L" value="2L"></el-option>
+                <el-option label="3L" value="3L"></el-option>
+                <el-option label="1oz" value="1oz"></el-option>
+                <el-option label="2oz" value="2oz"></el-option>
+                <el-option label="4oz" value="4oz"></el-option>
+                <el-option label="8oz" value="8oz"></el-option>
+                <el-option label="12oz" value="12oz"></el-option>
+                <el-option label="16oz" value="16oz"></el-option>
+                <el-option label="32oz" value="32oz"></el-option>
+                <el-option label="64oz" value="64oz"></el-option>
+                <el-option label="1gal" value="1gal"></el-option>
+                <el-option label="2 gal Jug" value="2 gal Jug"></el-option>
+                <el-option label="3 gal Jug" value="3 gal Jug"></el-option>
+                <el-option label="5 gal Jug" value="5 gal Jug"></el-option>
+                <el-option label="Steel Tank" value="Steel Tank"></el-option>
+                <el-option label="vial" value="vial"></el-option>
+                <el-option label="Titan Bin" value="Titan Bin"></el-option>
+                <el-option label="Multiple Jars <see remarks>" value="Multiple Jars <see remarks>"></el-option>
               </el-select>
             </el-form-item>
           </el-col>
@@ -366,20 +384,20 @@ export default {
       return fieldNames[field] || field;
     },
 
-    // 生成字段编号
-    async generateFieldNumber() {
-      try {
-        const response = await this.$api.generateFieldNumber();
-        if (response.code === 20000) {
-          this.localRecord.fieldNumber = response.data.fieldNumber;
-          this.handleFieldChange();
-          this.$message.success('Field number generated');
-        }
-      } catch (error) {
-        this.$message.error('Failed to generate field number');
-        console.error(error);
-      }
-    },
+    // // 生成字段编号
+    // async generateFieldNumber() {
+    //   try {
+    //     const response = await this.$api.generateFieldNumber();
+    //     if (response.code === 20000) {
+    //       this.localRecord.fieldNumber = response.data.fieldNumber;
+    //       this.handleFieldChange();
+    //       this.$message.success('Field number generated');
+    //     }
+    //   } catch (error) {
+    //     this.$message.error('Failed to generate field number');
+    //     console.error(error);
+    //   }
+    // },
 
     // 重置表单
     resetForm() {

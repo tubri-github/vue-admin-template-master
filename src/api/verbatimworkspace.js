@@ -17,14 +17,18 @@ export function getBatchInfo(batchSerialId) {
   })
 }
 
-export function getBatchRecords(batchSerialId, data) {
+export function getBatchRecords(batchSerialId, params = {}) {
   return request({
     url: api_prefix + `/batches/${batchSerialId}/records`,
     method: 'get',
-    data
+    params: {
+      page: params.page || 1,
+      page_size: params.page_size || 25,
+      status: params.status,
+      search: params.search
+    }
   })
 }
-
 export function markBatchCompleted(batchSerialId) {
   return request({
     url: `/api/verbatim/batches/${batchSerialId}/complete`,

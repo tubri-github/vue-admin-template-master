@@ -1,6 +1,6 @@
 <!--
   RecordEditorDialog.vue
-  单条记录编辑对话框 - 包含物种验证、地点验证和记录编辑三个区域
+  单条记录编辑对话框 - 修复版本
 -->
 <template>
   <el-dialog
@@ -40,6 +40,7 @@
           <species-verification
             :record="localRecord"
             :verbatim-data="verbatimTaxonomic"
+            :match-suggestions="matchSuggestions"
             @species-selected="handleSpeciesSelected"
             @create-new-species="handleCreateNewSpecies"
           />
@@ -153,6 +154,7 @@ export default {
       originalRecord: {},
       verbatimTaxonomic: null,
       verbatimLocality: null,
+      matchSuggestions: null,
       saving: false,
       hasLoaded: false
     }
@@ -193,23 +195,17 @@ export default {
   },
   methods: {
     // 加载记录详细数据
-// 加载记录详细数据
     async loadRecordData() {
       try {
-        // Use either the already-transformed data or the original API data
         const apiRecord = this.record._apiData || this.record;
 
         this.localRecord = {
           id: this.record.id,
           catalogNumber: this.record.catalogNumber,
-
-          // Use the pre-mapped properties if they exist
           taxonId: this.record.taxonId,
           verbatimTaxonomicId: this.record.verbatimTaxonomicId,
           localityId: this.record.localityId,
           verbatimLocalityId: this.record.verbatimLocalityId,
-
-          // Record details - use pre-mapped if they exist
           fieldNumber: this.record.fieldNumber,
           collectionDate: this.record.collectionDate,
           totalNumber: this.record.totalNumber || 1,
@@ -218,29 +214,27 @@ export default {
           prevNumber: this.record.prevNumber,
           inventory: this.record.inventory,
           remarks: this.record.remarks,
-
-          // Taxonomy and locality objects
+          // 当前匹配的物种和地点信息
           taxonomic: this.record.taxonomic,
           locality: this.record.locality,
-
-          // Processing status
           processingStatus: this.record.processingStatus,
-
-          // Store reference to original data
           _apiData: apiRecord
         };
 
-        // Make a copy for tracking changes
-        this.originalRecord = { ...this.localRecord };
-
-        // Set verbatim data directly
+        // 提取 verbatim 数据
         this.verbatimTaxonomic = this.record.verbatimTaxonomic;
         this.verbatimLocality = this.record.verbatimLocality;
 
-        // Log for debugging
-        console.log('Record Editor Data:', {
-          original: this.record,
-          local: this.localRecord
+        // 提取匹配建议信息
+        this.matchSuggestions = this.record.matchSuggestions;
+
+        // 保存原始记录用于变更追踪
+        this.originalRecord = { ...this.localRecord };
+
+        console.log('Record Editor Loaded:', {
+          localRecord: this.localRecord,
+          verbatimTaxonomic: this.verbatimTaxonomic,
+          matchSuggestions: this.matchSuggestions
         });
 
         this.hasLoaded = true;
@@ -253,7 +247,14 @@ export default {
     // 处理物种选择
     handleSpeciesSelected(taxon) {
       this.localRecord.taxonId = taxon.TaxonID;
-      this.localRecord.taxonomic = taxon;
+      this.localRecord.taxonomic = {
+        TaxonID: taxon.TaxonID,
+        FullName: taxon.FullName,
+        Family: taxon.Family,
+        Genus: taxon.Genus,
+        Species: taxon.Species,
+        Author: taxon.Author
+      };
       this.$message.success(`Species matched: ${taxon.FullName}`);
     },
 
@@ -275,7 +276,7 @@ export default {
     handleLocalitySelected(locality) {
       this.localRecord.localityId = locality.LocalityID;
       this.localRecord.locality = locality;
-      this.$message.success(`Locality matched: ${locality.LocalityName}`);
+      this.$message.success(`Locality matched: ${locality.LocalityString}`);
     },
 
     // 处理创建新地点
@@ -303,31 +304,28 @@ export default {
       this.$message.info('Changes reset');
     },
 
-    // 保存记录 - Prepare the record for API submission
+    // 保存记录
     async saveRecord() {
       this.saving = true;
       try {
-        // Transform the record back to the API format
-        const apiRecord = {
+        // 准备API更新数据
+        const updateData = {
           id: this.localRecord.id,
-          taxonomic_id: this.localRecord.taxonId,
-          locality_id: this.localRecord.locality1Id,
-          record_data: {
-            total_number: this.localRecord.totalNumber,
-            storage: this.localRecord.storage,
-            jar_size: this.localRecord.jarSize,
-            prev_number: this.localRecord.prevNumber,
-            inventory: this.localRecord.inventory,
-            remarks: this.localRecord.remarks
-          },
-          locality_data: {
-            collection_date: this.localRecord.collectionDate,
-            field_number: this.localRecord.fieldNumber
-          }
+          taxon_id: this.localRecord.taxonId,
+          locality_id: this.localRecord.localityId,
+          collection_date: this.localRecord.collectionDate,
+          total_number: this.localRecord.totalNumber,
+          storage: this.localRecord.storage,
+          jar_size: this.localRecord.jarSize,
+          prev_number: this.localRecord.prevNumber,
+          inventory: this.localRecord.inventory,
+          remarks: this.localRecord.remarks,
+          // 如果物种和地点都已匹配，取消审核标志
+          review_flag: !(this.localRecord.taxonId && this.localRecord.localityId)
         };
 
-        // Emit the transformed record for the parent to save
-        this.$emit('save', apiRecord);
+        // 发出保存事件给父组件
+        this.$emit('save', updateData);
       } catch (error) {
         this.$message.error('Failed to save record');
         console.error(error);

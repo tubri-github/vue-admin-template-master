@@ -1,6 +1,6 @@
 <!--
   VerbatimWorkspace.vue
-  Verbatim 数据处理工作台 - 批次数据验证和编辑
+  Verbatim 数据处理工作台 - 批次数据验证和编辑 (服务器端分页版本)
 -->
 <template>
   <div class="verbatim-workspace">
@@ -128,19 +128,19 @@
             <el-button-group>
               <el-button
                 size="small"
-                :type="filterStatus === 'all' ? 'primary' : ''"
+                :type="serverSideFilter === 'all' ? 'primary' : ''"
                 @click="setFilter('all')">
-                All ({{filteredRecords.length}})
+                All ({{totalRecords}})
               </el-button>
               <el-button
                 size="small"
-                :type="filterStatus === 'pending' ? 'warning' : ''"
-                @click="setFilter('pending')">
+                :type="serverSideFilter === 'pending_any' ? 'warning' : ''"
+                @click="setFilter('pending_any')">
                 Pending ({{pendingCount}})
               </el-button>
               <el-button
                 size="small"
-                :type="filterStatus === 'completed' ? 'success' : ''"
+                :type="serverSideFilter === 'completed' ? 'success' : ''"
                 @click="setFilter('completed')">
                 Completed ({{completedCount}})
               </el-button>
@@ -154,6 +154,8 @@
             <el-col :span="12">
               <el-input
                 v-model="searchText"
+                @input="onSearchChange"
+                @clear="onSearchClear"
                 placeholder="Search by catalog number, field number, or species..."
                 prefix-icon="el-icon-search"
                 clearable>
@@ -174,7 +176,7 @@
 
         <!-- 记录表格 -->
         <el-table
-          :data="paginatedRecords"
+          :data="batchRecords"
           v-loading="loadingRecords"
           stripe
           @row-click="editRecord">
@@ -199,6 +201,14 @@
                 <i :class="getSpeciesStatusIcon(scope.row)"></i>
                 {{getSpeciesStatusText(scope.row)}}
               </el-tag>
+              <!-- 显示匹配建议信息 -->
+              <div v-if="scope.row.matchSuggestions" class="suggestion-info">
+                <el-tooltip :content="getMatchTooltip(scope.row.matchSuggestions)" placement="top">
+                  <el-tag size="mini" :type="getMatchSuggestionType(scope.row.matchSuggestions)">
+                    {{scope.row.matchSuggestions.status}} ({{scope.row.matchSuggestions.confidence}}%)
+                  </el-tag>
+                </el-tooltip>
+              </div>
             </template>
           </el-table-column>
 
@@ -215,7 +225,7 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="Matched Species" width="200">
+          <el-table-column label="Matched Species" width="250">
             <template slot-scope="scope">
               <div v-if="scope.row.taxonomic">
                 <div class="matched-text">
@@ -223,6 +233,22 @@
                 </div>
                 <div class="text-xs text-gray-500">
                   ID: {{scope.row.taxonomic.TaxonID}}
+                </div>
+              </div>
+              <!-- 显示建议的物种 -->
+              <div v-else-if="scope.row.suggestedTaxonomic" class="suggested-species">
+                <div class="suggested-text">
+                  {{scope.row.suggestedTaxonomic.FullName}}
+                  <el-button
+                    type="text"
+                    size="mini"
+                    @click.stop="applySuggestion(scope.row)"
+                    style="color: #409EFF;">
+                    Apply
+                  </el-button>
+                </div>
+                <div class="text-xs text-gray-500">
+                  Suggested ID: {{scope.row.suggestedTaxonomic.TaxonID}}
                 </div>
               </div>
               <span v-else class="text-gray-400">Not matched</span>
@@ -271,7 +297,7 @@
             :current-page="currentPage"
             :page-sizes="[10, 25, 50, 100]"
             :page-size="pageSize"
-            :total="filteredRecords.length"
+            :total="totalRecords"
             layout="total, sizes, prev, pager, next"
             @current-change="handlePageChange"
             @size-change="handleSizeChange">
@@ -293,7 +319,15 @@
 
 <script>
 import RecordEditorDialog from '@/components/RecordsProcessor/RecordEditorDialog.vue'
-import { getVerbatimBatches, getBatchRecords, getBatchInfo } from '@/api/verbatimworkspace'
+import {
+  getVerbatimBatches,
+  getBatchRecords,
+  getBatchInfo,
+  updateVerbatimRecord,
+  exportBatchResults,
+  markBatchCompleted,
+  applyTaxonomicSuggestion
+} from '@/api/verbatimworkspace'
 
 export default {
   name: 'VerbatimWorkspace',
@@ -311,10 +345,13 @@ export default {
       // 记录数据
       batchRecords: [],
       loadingRecords: false,
+      totalRecords: 0, // 服务器端总记录数
 
-      // 过滤和搜索
-      filterStatus: 'all',
+      // 服务器端过滤和搜索
+      serverSideFilter: 'all',
+      serverSideSearch: '',
       searchText: '',
+      searchTimeout: null,
       currentPage: 1,
       pageSize: 25,
 
@@ -335,74 +372,35 @@ export default {
     }
   },
   computed: {
-    filteredRecords() {
-      let records = this.batchRecords;
-
-      // 状态过滤
-      if (this.filterStatus === 'pending') {
-        records = records.filter(record =>
-          !record.taxonId || !record.localityId
-        );
-      } else if (this.filterStatus === 'completed') {
-        records = records.filter(record =>
-          record.taxonId && record.localityId
-        );
-      }
-
-      // 文本搜索
-      if (this.searchText) {
-        const searchTerm = this.searchText.toLowerCase();
-        records = records.filter(record => {
-          return (
-            (record.catalogNumber && record.catalogNumber.toLowerCase().includes(searchTerm)) ||
-            (record.fieldNumber && record.fieldNumber.toLowerCase().includes(searchTerm)) ||
-            (record.verbatimTaxonomic &&
-              (record.verbatimTaxonomic.verbatimGenus + ' ' + record.verbatimTaxonomic.verbatimSpecies)
-                .toLowerCase().includes(searchTerm)) ||
-            (record.taxonomic && record.taxonomic.FullName.toLowerCase().includes(searchTerm))
-          );
-        });
-      }
-
-      return records;
-    },
-
-    paginatedRecords() {
-      const start = (this.currentPage - 1) * this.pageSize;
-      const end = start + this.pageSize;
-      return this.filteredRecords.slice(start, end);
-    },
-
     pendingCount() {
-      return this.batchRecords.filter(record =>
-        !record.taxonId || !record.localityId
-      ).length;
+      return this.progressStats.total - this.progressStats.fullyCompleted;
     },
 
     completedCount() {
-      return this.batchRecords.filter(record =>
-        record.taxonId && record.localityId
-      ).length;
+      return this.progressStats.fullyCompleted;
     }
   },
   async mounted() {
     await this.loadAvailableBatches();
+  },
+  beforeDestroy() {
+    if (this.searchTimeout) {
+      clearTimeout(this.searchTimeout);
+    }
   },
   methods: {
     // 加载可用批次列表
     async loadAvailableBatches() {
       this.loadingBatch = true;
       try {
-        // API 调用获取 verbatim 模式导入的批次
         const response = await getVerbatimBatches();
         if (response.code === 20000) {
           this.availableBatches = response.data.items.map(batch => ({
             batchSerialId: batch.batch_serial_id,
-            fileName: batch.file_name || 'Unnamed Batch', // Add fallback if file_name is missing
+            fileName: batch.file_name || 'Unnamed Batch',
             recordCount: batch.total_records,
             importDate: batch.import_date,
             status: batch.status,
-            // Map other properties as needed
           }))
         }
       } catch (error) {
@@ -420,15 +418,20 @@ export default {
     },
 
     // 加载批次数据
-// 加载批次数据
     async loadBatchData() {
       if (!this.selectedBatchId) {
         this.currentBatch = null;
         this.batchRecords = [];
+        this.totalRecords = 0;
         return;
       }
 
-      this.loadingRecords = true;
+      // 重置分页和搜索
+      this.currentPage = 1;
+      this.serverSideSearch = '';
+      this.serverSideFilter = 'all';
+      this.searchText = '';
+
       try {
         // 获取批次基本信息
         const batchResponse = await getBatchInfo(this.selectedBatchId);
@@ -440,14 +443,40 @@ export default {
             importDate: batchResponse.data.import_date,
             status: batchResponse.data.status
           };
+
+          // 设置进度统计
+          this.updateProgressFromBatchInfo(batchResponse.data.progress);
         }
 
-        // 获取批次记录
-        const recordsResponse = await getBatchRecords(this.selectedBatchId);
+        // 加载第一页记录
+        await this.loadBatchRecords();
+      } catch (error) {
+        this.$message.error('Failed to load batch data');
+        console.error(error);
+      }
+    },
+
+    // 加载批次记录 - 支持分页和过滤
+    async loadBatchRecords() {
+      if (!this.selectedBatchId) {
+        this.batchRecords = [];
+        this.totalRecords = 0;
+        return;
+      }
+
+      this.loadingRecords = true;
+      try {
+        const recordsResponse = await getBatchRecords(this.selectedBatchId, {
+          page: this.currentPage,
+          page_size: this.pageSize,
+          status: this.serverSideFilter === 'all' ? undefined : this.serverSideFilter,
+          search: this.serverSideSearch
+        });
+
         if (recordsResponse.code === 20000) {
-          // Map the records to match your component's expected format
+          this.totalRecords = recordsResponse.data.total;
+          // Map the records to match component's expected format
           this.batchRecords = recordsResponse.data.items.map(record => {
-            // Create the component-friendly record format
             return {
               // Keep basic ID and catalog number
               id: record.id,
@@ -485,7 +514,33 @@ export default {
               // Extract matched taxonomic data
               taxonomic: record.matched_data?.taxonomic?.id ? {
                 FullName: `${record.matched_data.taxonomic.genus || ''} ${record.matched_data.taxonomic.species || ''}`.trim(),
-                TaxonID: record.matched_data.taxonomic.id
+                TaxonID: record.matched_data.taxonomic.id,
+                Family: record.matched_data.taxonomic.family,
+                Genus: record.matched_data.taxonomic.genus,
+                Species: record.matched_data.taxonomic.species,
+                Author: record.matched_data.taxonomic.author
+              } : null,
+
+              // Extract match suggestions - 根据实际数据结构
+              matchSuggestions: record.match_suggestions?.taxonomic ? {
+                status: record.match_suggestions.taxonomic.status,
+                confidence: record.match_suggestions.taxonomic.confidence,
+                hasSuggestion: record.match_suggestions.taxonomic.has_suggestion,
+                suggestionApplied: record.match_suggestions.taxonomic.suggestion_applied,
+                suggested_taxon_id: record.match_suggestions.taxonomic.suggested_taxon_id,
+                match_details: record.match_suggestions.taxonomic.match_details,
+                suggested_data: record.match_suggestions.taxonomic.suggested_data
+              } : null,
+
+              // 为了向后兼容，保留 suggestedTaxonomic 字段
+              suggestedTaxonomic: record.match_suggestions?.taxonomic?.suggested_data ? {
+                FullName: record.match_suggestions.taxonomic.suggested_data.full_name ||
+                  `${record.match_suggestions.taxonomic.suggested_data.genus || ''} ${record.match_suggestions.taxonomic.suggested_data.species || ''}`.trim(),
+                TaxonID: record.match_suggestions.taxonomic.suggested_taxon_id,
+                Family: record.match_suggestions.taxonomic.suggested_data.family,
+                Genus: record.match_suggestions.taxonomic.suggested_data.genus,
+                Species: record.match_suggestions.taxonomic.suggested_data.species,
+                Author: record.match_suggestions.taxonomic.suggested_data.author
               } : null,
 
               // Save the processing status
@@ -495,67 +550,85 @@ export default {
               _apiData: record
             };
           });
-          this.calculateProgress();
+          // Update progress from API response if available
+          if (recordsResponse.data.progress) {
+            this.updateProgressFromAPI(recordsResponse.data.progress);
+          }
         }
       } catch (error) {
-        this.$message.error('Failed to load batch data');
+        this.$message.error('Failed to load batch records');
         console.error(error);
       } finally {
         this.loadingRecords = false;
       }
     },
-    // 计算进度统计
-    calculateProgress() {
-      if (!this.batchRecords || this.batchRecords.length === 0) {
-        this.progressStats = {
-          total: 0,
-          speciesCompleted: 0,
-          localityCompleted: 0,
-          fullyCompleted: 0,
-          speciesPercentage: 0,
-          localityPercentage: 0,
-          completionPercentage: 0
-        };
-        return;
-      }
 
-      const total = this.batchRecords.length;
-      // Count records with taxonId (species completed)
-      const speciesCompleted = this.batchRecords.filter(r => r.taxonId).length;
-      // Count records with localityId (locality completed)
-      const localityCompleted = this.batchRecords.filter(r => r.localityId).length;
-      // Count records with both taxonId and localityId (fully completed)
-      const fullyCompleted = this.batchRecords.filter(r => r.taxonId && r.localityId).length;
-
+    // 更新进度统计
+    updateProgressFromAPI(progress) {
       this.progressStats = {
-        total,
-        speciesCompleted,
-        localityCompleted,
-        fullyCompleted,
-        speciesPercentage: total > 0 ? Math.round((speciesCompleted / total) * 100) : 0,
-        localityPercentage: total > 0 ? Math.round((localityCompleted / total) * 100) : 0,
-        completionPercentage: total > 0 ? Math.round((fullyCompleted / total) * 100) : 0
+        total: this.currentBatch?.recordCount || progress.taxonomic?.total || 0,
+        speciesCompleted: progress.taxonomic?.processed || 0,
+        localityCompleted: progress.locality?.processed || 0,
+        fullyCompleted: progress.overall?.processed || 0,
+        speciesPercentage: progress.taxonomic?.percent || 0,
+        localityPercentage: progress.locality?.percent || 0,
+        completionPercentage: progress.overall?.percent || 0
       };
     },
+
+    updateProgressFromBatchInfo(progress) {
+      if (progress) {
+        this.progressStats = {
+          total: progress.taxonomic?.total || 0,
+          speciesCompleted: progress.taxonomic?.processed || 0,
+          localityCompleted: progress.locality?.processed || 0,
+          fullyCompleted: progress.overall?.processed || 0,
+          speciesPercentage: progress.taxonomic?.percent || 0,
+          localityPercentage: progress.locality?.percent || 0,
+          completionPercentage: progress.overall?.percent || 0
+        };
+      }
+    },
+
     // 刷新进度
     async refreshProgress() {
       await this.loadBatchData();
     },
 
-    // 设置过滤状态
-    setFilter(status) {
-      this.filterStatus = status;
+    // 设置过滤状态 - 需要调用服务器
+    async setFilter(status) {
+      this.serverSideFilter = status;
       this.currentPage = 1;
+      await this.loadBatchRecords();
     },
 
-    // 分页处理
-    handlePageChange(page) {
+    // 搜索处理 - 添加防抖
+    onSearchChange() {
+      clearTimeout(this.searchTimeout);
+      this.searchTimeout = setTimeout(async () => {
+        this.serverSideSearch = this.searchText;
+        this.currentPage = 1;
+        await this.loadBatchRecords();
+      }, 500); // 500ms 防抖
+    },
+
+    onSearchClear() {
+      this.searchText = '';
+      this.serverSideSearch = '';
+      this.currentPage = 1;
+      this.loadBatchRecords();
+    },
+
+    // 分页处理 - 需要调用服务器
+    async handlePageChange(page) {
       this.currentPage = page;
+      await this.loadBatchRecords();
     },
 
-    handleSizeChange(size) {
+    async handleSizeChange(size) {
       this.pageSize = size;
       this.currentPage = 1;
+      await this.loadBatchRecords();
     },
 
     // 获取物种状态
@@ -596,6 +669,46 @@ export default {
       return 'None';
     },
 
+    // 获取匹配建议相关信息
+    getMatchSuggestionType(matchSuggestions) {
+      if (!matchSuggestions || !matchSuggestions.hasSuggestion) return '';
+
+      const confidence = matchSuggestions.confidence || 0;
+      if (confidence >= 90) return 'success';
+      if (confidence >= 70) return 'warning';
+      return 'info';
+    },
+
+    getMatchTooltip(matchSuggestions) {
+      if (!matchSuggestions) return '';
+
+      let tooltip = `Match Status: ${matchSuggestions.status}\n`;
+      tooltip += `Confidence: ${matchSuggestions.confidence}%\n`;
+      if (matchSuggestions.suggestionApplied) {
+        tooltip += 'Suggestion has been applied';
+      } else if (matchSuggestions.hasSuggestion) {
+        tooltip += 'Click "Apply" to use this suggestion';
+      } else {
+        tooltip += 'No automatic suggestion available';
+      }
+
+      return tooltip;
+    },
+
+    // 应用分类建议
+    async applySuggestion(record) {
+      try {
+        const response = await applyTaxonomicSuggestion(record.id);
+        if (response.code === 20000) {
+          this.$message.success('Taxonomic suggestion applied successfully');
+          await this.loadBatchRecords(); // 重新加载当前页数据
+        }
+      } catch (error) {
+        this.$message.error('Failed to apply taxonomic suggestion');
+        console.error(error);
+      }
+    },
+
     // 编辑记录
     editRecord(record) {
       console.log('Editing record:', record);
@@ -614,14 +727,9 @@ export default {
       try {
         const response = await updateVerbatimRecord(updatedRecord);
         if (response.code === 20000) {
-          // 更新本地记录
-          const index = this.batchRecords.findIndex(r => r.id === updatedRecord.id);
-          if (index !== -1) {
-            this.batchRecords.splice(index, 1, response.data);
-          }
-          this.calculateProgress();
           this.$message.success('Record updated successfully');
           this.closeRecordEditor();
+          await this.loadBatchRecords(); // 重新加载当前页数据
         }
       } catch (error) {
         this.$message.error('Failed to update record');
@@ -666,7 +774,7 @@ export default {
       }
 
       try {
-        await this.$api.markBatchCompleted(this.selectedBatchId);
+        await markBatchCompleted(this.selectedBatchId);
         this.$message.success('Batch marked as completed');
         await this.loadBatchData();
       } catch (error) {
@@ -758,57 +866,6 @@ export default {
 
 .table-toolbar {
   margin-bottom: 20px;
-  padding: 15px 0;
-  border-bottom: 1px solid #eee;
-}
-
-.catalog-number {
-  font-family: monospace;
-  font-weight: bold;
-}
-
-.verbatim-text {
-  font-style: italic;
-  color: #666;
-  font-size: 13px;
-}
-
-.matched-text {
-  font-weight: 500;
-  color: #333;
-  font-size: 13px;
-}
-
-.pagination-wrapper {
-  margin-top: 20px;
-  text-align: center;
-}
-
-.text-right {
-  text-align: right;
-}
-
-.text-gray-400 {
-  color: #ccc;
-}
-
-.text-gray-500 {
-  color: #999;
-}
-
-.text-xs {
-  font-size: 12px;
-}
-
-.w-full {
-  width: 100%;
-}
-
-.text-lg {
-  font-size: 18px;
-}
-
-.font-medium {
-  font-weight: 500;
+  padding: 15px
 }
 </style>
