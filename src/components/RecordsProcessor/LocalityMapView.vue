@@ -1,6 +1,6 @@
 <!--
   LocalityMapView.vue
-  地点地图查看组件
+  地点地图查看组件 - 修复版本，正确集成 Google Maps
 -->
 <template>
   <div class="locality-map-view">
@@ -8,45 +8,43 @@
     <div class="map-header">
       <div class="locality-info">
         <h3 class="locality-title">
-          <i class="el-icon-location"></i>
-          {{locality.LocalityName || `Locality ${locality.LocalityID}`}}
+          <i class="el-icon-location" />
+          {{ locality.LocalityName || locality.FieldNo || `Locality ${locality.Locality1ID}` }}
         </h3>
         <div class="locality-subtitle">
-          {{getLocationString()}}
+          {{ getLocationString() }}
         </div>
         <div v-if="hasCoordinates" class="coordinates-display">
           <span class="coord-label">Coordinates:</span>
-          <span class="coord-value">{{locality.Latitude}}, {{locality.Longitude}}</span>
-          <el-button size="mini" @click="copyCoordinates" class="copy-btn">
-            <i class="el-icon-copy-document"></i>
+          <span class="coord-value">{{ locality.Lat }}, {{ locality.Lon }}</span>
+          <el-button size="mini" class="copy-btn" @click="copyCoordinates">
+            <i class="el-icon-copy-document" />
           </el-button>
         </div>
       </div>
 
       <div class="map-controls">
         <el-button-group>
-          <el-button size="small" @click="zoomIn">
-            <i class="el-icon-zoom-in"></i>
+          <el-button size="small" @click="zoomIn" :disabled="!mapLoaded">
+            <i class="el-icon-zoom-in" />
           </el-button>
-          <el-button size="small" @click="zoomOut">
-            <i class="el-icon-zoom-out"></i>
+          <el-button size="small" @click="zoomOut" :disabled="!mapLoaded">
+            <i class="el-icon-zoom-out" />
           </el-button>
-          <el-button size="small" @click="resetView">
-            <i class="el-icon-refresh"></i>
+          <el-button size="small" @click="resetView" :disabled="!mapLoaded">
+            <i class="el-icon-refresh" />
           </el-button>
         </el-button-group>
 
-        <el-dropdown @command="handleMapCommand" class="map-options">
-          <el-button size="small">
-            Options<i class="el-icon-arrow-down el-icon--right"></i>
+        <el-dropdown class="map-options" @command="handleMapCommand">
+          <el-button size="small" :disabled="!mapLoaded">
+            Options<i class="el-icon-arrow-down el-icon--right" />
           </el-button>
           <el-dropdown-menu slot="dropdown">
             <el-dropdown-item command="satellite">Satellite View</el-dropdown-item>
             <el-dropdown-item command="terrain">Terrain View</el-dropdown-item>
-            <el-dropdown-item command="street">Street View</el-dropdown-item>
-            <el-dropdown-item divided command="fullscreen">Open Fullscreen</el-dropdown-item>
-            <el-dropdown-item command="directions">Get Directions</el-dropdown-item>
-            <el-dropdown-item command="export">Export Image</el-dropdown-item>
+            <el-dropdown-item command="roadmap">Road Map</el-dropdown-item>
+            <el-dropdown-item divided command="directions">Get Directions</el-dropdown-item>
           </el-dropdown-menu>
         </el-dropdown>
       </div>
@@ -55,22 +53,43 @@
     <!-- 地图容器 -->
     <div class="map-container">
       <div v-if="hasCoordinates">
-        <div id="locality-map" class="map-canvas" :style="mapStyle"></div>
+        <!-- Google Maps 容器 -->
+        <div
+          :id="mapContainerId"
+          class="map-canvas"
+          :style="mapStyle"
+        />
 
         <!-- 地图加载状态 -->
         <div v-if="mapLoading" class="map-loading">
-          <el-loading-mask :visible="true" text="Loading map..."></el-loading-mask>
+          <div class="loading-content">
+            <i class="el-icon-loading" />
+            <span>Loading Google Maps...</span>
+          </div>
+        </div>
+
+        <!-- 地图加载失败 -->
+        <div v-if="mapLoadError" class="map-error">
+          <div class="error-content">
+            <i class="el-icon-warning" />
+            <h4>Failed to Load Map</h4>
+            <p>{{ mapLoadError }}</p>
+            <el-button @click="retryLoadMap" size="small">
+              <i class="el-icon-refresh" />
+              Retry
+            </el-button>
+          </div>
         </div>
       </div>
 
       <!-- 无坐标信息 -->
       <div v-else class="no-coordinates">
-        <i class="el-icon-warning-outline"></i>
+        <i class="el-icon-warning-outline" />
         <div class="no-coords-text">
           <h4>No Coordinates Available</h4>
           <p>This locality does not have coordinate information to display on the map.</p>
           <el-button @click="$emit('edit-locality', locality)">
-            <i class="el-icon-edit"></i>
+            <i class="el-icon-edit" />
             Add Coordinates
           </el-button>
         </div>
@@ -78,148 +97,40 @@
     </div>
 
     <!-- 地图信息面板 -->
-    <div v-if="hasCoordinates" class="map-info-panel">
-      <el-tabs v-model="activeInfoTab" type="border-card">
-        <!-- 位置信息 -->
-        <el-tab-pane label="Location Info" name="location">
-          <div class="info-content">
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <div class="info-item">
-                  <label>Latitude:</label>
-                  <span>{{locality.Latitude}}°</span>
-                </div>
-              </el-col>
-              <el-col :span="12">
-                <div class="info-item">
-                  <label>Longitude:</label>
-                  <span>{{locality.Longitude}}°</span>
-                </div>
-              </el-col>
-            </el-row>
+    <div v-if="hasCoordinates && mapLoaded" class="map-info-panel">
+      <el-card>
+        <div slot="header">
+          <span>Location Information</span>
+        </div>
 
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <div class="info-item">
-                  <label>Coordinate System:</label>
-                  <span>{{locality.CoordinateSystem || 'Unknown'}}</span>
-                </div>
-              </el-col>
-              <el-col :span="12">
-                <div class="info-item">
-                  <label>Accuracy:</label>
-                  <span>{{locality.CoordinateAccuracy ? locality.CoordinateAccuracy + 'm' : 'Unknown'}}</span>
-                </div>
-              </el-col>
-            </el-row>
-
-            <div v-if="locality.Elevation !== null" class="info-item">
-              <label>Elevation:</label>
-              <span>{{locality.Elevation}} meters</span>
-            </div>
-          </div>
-        </el-tab-pane>
-
-        <!-- 地图图层 -->
-        <el-tab-pane label="Map Layers" name="layers">
-          <div class="info-content">
-            <div class="layer-controls">
-              <el-checkbox v-model="layers.marker" @change="toggleLayer('marker')">
-                Location Marker
-              </el-checkbox>
-              <el-checkbox v-model="layers.accuracy" @change="toggleLayer('accuracy')">
-                Accuracy Circle
-              </el-checkbox>
-              <el-checkbox v-model="layers.nearby" @change="toggleLayer('nearby')">
-                Nearby Localities
-              </el-checkbox>
-              <el-checkbox v-model="layers.terrain" @change="toggleLayer('terrain')">
-                Terrain Overlay
-              </el-checkbox>
-            </div>
-
-            <div class="layer-info">
-              <div class="layer-item">
-                <span class="layer-label">Current Zoom Level:</span>
-                <span class="layer-value">{{currentZoom}}</span>
+        <div class="info-content">
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <div class="info-item">
+                <label>Latitude:</label>
+                <span>{{ locality.Lat }}°</span>
               </div>
-              <div class="layer-item">
-                <span class="layer-label">Map Type:</span>
-                <span class="layer-value">{{currentMapType}}</span>
+            </el-col>
+            <el-col :span="12">
+              <div class="info-item">
+                <label>Longitude:</label>
+                <span>{{ locality.Lon }}°</span>
               </div>
-            </div>
+            </el-col>
+          </el-row>
+
+          <div class="info-item">
+            <label>Zoom Level:</label>
+            <span>{{ currentZoom }}</span>
           </div>
-        </el-tab-pane>
 
-        <!-- 附近地点 -->
-        <el-tab-pane label="Nearby Localities" name="nearby">
-          <div class="info-content">
-            <div class="nearby-controls">
-              <el-row :gutter="10">
-                <el-col :span="16">
-                  <span>Search Radius:</span>
-                  <el-slider
-                    v-model="searchRadius"
-                    :min="1"
-                    :max="50"
-                    :step="1"
-                    show-input
-                    :input-size="'mini'"
-                    @change="searchNearbyLocalities">
-                  </el-slider>
-                </el-col>
-                <el-col :span="8">
-                  <span class="radius-display">{{searchRadius}} km</span>
-                </el-col>
-              </el-row>
-            </div>
-
-            <div v-if="nearbyLocalities.length > 0" class="nearby-list">
-              <div
-                v-for="nearby in nearbyLocalities"
-                :key="nearby.LocalityID"
-                class="nearby-item"
-                @click="focusOnLocality(nearby)">
-                <div class="nearby-info">
-                  <div class="nearby-name">{{nearby.LocalityName}}</div>
-                  <div class="nearby-details">
-                    <span class="distance">{{nearby.distance.toFixed(1)}} km</span>
-                    <span class="coords">{{nearby.Latitude}}, {{nearby.Longitude}}</span>
-                  </div>
-                </div>
-                <el-button size="mini" @click.stop="viewNearbyDetails(nearby)">
-                  <i class="el-icon-view"></i>
-                </el-button>
-              </div>
-            </div>
-
-            <div v-else-if="searchingNearby" class="nearby-loading">
-              <i class="el-icon-loading"></i>
-              Searching nearby localities...
-            </div>
-
-            <div v-else class="no-nearby">
-              No nearby localities found within {{searchRadius}}km
-            </div>
+          <div class="info-item">
+            <label>Map Type:</label>
+            <span>{{ currentMapType }}</span>
           </div>
-        </el-tab-pane>
-      </el-tabs>
+        </div>
+      </el-card>
     </div>
-
-    <!-- 全屏地图对话框 -->
-    <el-dialog
-      title="Fullscreen Map"
-      :visible.sync="showFullscreenMap"
-      :fullscreen="true"
-      :show-close="true"
-      class="fullscreen-map-dialog">
-
-      <div id="fullscreen-map" class="fullscreen-map-canvas"></div>
-
-      <div slot="footer">
-        <el-button @click="showFullscreenMap = false">Close</el-button>
-      </div>
-    </el-dialog>
   </div>
 </template>
 
@@ -234,6 +145,10 @@ export default {
     height: {
       type: [String, Number],
       default: 400
+    },
+    googleMapsApiKey: {
+      type: String,
+      default: () => process.env.VUE_APP_GOOGLE_MAPS_API_KEY || ''
     }
   },
   data() {
@@ -241,67 +156,63 @@ export default {
       // 地图状态
       map: null,
       marker: null,
-      accuracyCircle: null,
       mapLoading: true,
+      mapLoaded: false,
+      mapLoadError: null,
       currentZoom: 10,
       currentMapType: 'roadmap',
 
-      // UI状态
-      activeInfoTab: 'location',
-      showFullscreenMap: false,
-
-      // 图层控制
-      layers: {
-        marker: true,
-        accuracy: true,
-        nearby: false,
-        terrain: false
-      },
-
-      // 附近地点
-      nearbyLocalities: [],
-      searchingNearby: false,
-      searchRadius: 10,
-      nearbyMarkers: [],
+      // 唯一ID，避免多个组件实例冲突
+      mapContainerId: `locality-map-${Math.random().toString(36).substr(2, 9)}`,
 
       // 地图选项
-      mapOptions: {
+      defaultMapOptions: {
         zoom: 10,
-        center: null,
         mapTypeId: 'roadmap',
         streetViewControl: false,
         mapTypeControl: true,
-        fullscreenControl: false
+        fullscreenControl: true,
+        zoomControl: true
       }
     }
   },
   computed: {
     hasCoordinates() {
-      return this.locality.Latitude !== null &&
-        this.locality.Longitude !== null &&
-        this.locality.Latitude !== undefined &&
-        this.locality.Longitude !== undefined;
+      return this.locality.Lat !== null &&
+        this.locality.Lon !== null &&
+        this.locality.Lat !== undefined &&
+        this.locality.Lon !== undefined &&
+        !isNaN(this.locality.Lat) &&
+        !isNaN(this.locality.Lon)
     },
 
     mapStyle() {
       return {
         height: typeof this.height === 'number' ? `${this.height}px` : this.height,
         width: '100%'
-      };
+      }
+    },
+
+    coordinates() {
+      if (!this.hasCoordinates) return null
+      return {
+        lat: Number(this.locality.Lat),
+        lng: Number(this.locality.Lon)
+      }
     }
   },
   mounted() {
-    if (this.hasCoordinates) {
-      this.$nextTick(() => {
-        this.initializeMap();
-      });
+    if (this.hasCoordinates && this.googleMapsApiKey) {
+      this.initializeGoogleMaps()
+    } else if (!this.googleMapsApiKey) {
+      this.mapLoadError = 'Google Maps API Key is required'
+      this.mapLoading = false
+    } else {
+      this.mapLoading = false
     }
   },
   beforeDestroy() {
-    if (this.map) {
-      // 清理地图事件监听器
-      google.maps.event.clearInstanceListeners(this.map);
-    }
+    this.cleanupMap()
   },
   methods: {
     // 获取位置字符串
@@ -310,343 +221,263 @@ export default {
         this.locality.Country,
         this.locality.State,
         this.locality.County
-      ].filter(Boolean);
+      ].filter(Boolean)
 
-      return parts.join(', ') || 'Unknown location';
+      return parts.join(', ') || 'Unknown location'
     },
 
-    // 初始化地图（简化版，实际应集成 Google Maps 或其他地图服务）
-    initializeMap() {
-      // 模拟地图初始化
-      this.mapLoading = true;
+    // 初始化 Google Maps
+    async initializeGoogleMaps() {
+      try {
+        this.mapLoading = true
+        this.mapLoadError = null
 
-      // 在实际应用中，这里应该初始化真实的地图服务
-      setTimeout(() => {
-        this.createSimulatedMap();
-        this.mapLoading = false;
-      }, 1000);
+        // 加载 Google Maps API
+        await this.loadGoogleMapsAPI()
+
+        // 等待 DOM 元素准备好
+        await this.$nextTick()
+
+        // 确保容器元素存在
+        const container = document.getElementById(this.mapContainerId)
+        if (!container) {
+          throw new Error('Map container not found')
+        }
+
+        // 创建地图
+        this.createMap(container)
+
+      } catch (error) {
+        console.error('Failed to initialize Google Maps:', error)
+        this.mapLoadError = error.message
+        this.mapLoading = false
+      }
     },
 
-    // 创建模拟地图（实际应用中替换为真实地图库）
-    createSimulatedMap() {
-      const mapContainer = document.getElementById('locality-map');
-      if (!mapContainer) return;
+    // 加载 Google Maps API
+    loadGoogleMapsAPI() {
+      return new Promise((resolve, reject) => {
+        // 如果已经加载，直接返回
+        if (window.google && window.google.maps) {
+          resolve()
+          return
+        }
 
-      // 创建简化的地图显示
-      mapContainer.innerHTML = `
-        <div class="simulated-map" style="
-          width: 100%;
-          height: 100%;
-          background: linear-gradient(45deg, #e8f4f8 0%, #d1e7dd 50%, #c3e6cb 100%);
-          position: relative;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          overflow: hidden;
-        ">
-          <div class="map-grid" style="
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-image:
-              linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px);
-            background-size: 50px 50px;
-          "></div>
+        // 如果正在加载，等待加载完成
+        if (window.googleMapsLoading) {
+          const checkLoaded = () => {
+            if (window.google && window.google.maps) {
+              resolve()
+            } else {
+              setTimeout(checkLoaded, 100)
+            }
+          }
+          checkLoaded()
+          return
+        }
 
-          <div class="location-marker" style="
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 30px;
-            height: 30px;
-            background: #ff4444;
-            border: 3px solid white;
-            border-radius: 50%;
-            box-shadow: 0 0 10px rgba(0,0,0,0.3);
-            z-index: 10;
-          "></div>
+        // 开始加载
+        window.googleMapsLoading = true
 
-          <div class="accuracy-circle" style="
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 100px;
-            height: 100px;
-            border: 2px dashed #409EFF;
-            border-radius: 50%;
-            background: rgba(64, 158, 255, 0.1);
-          "></div>
+        const script = document.createElement('script')
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${this.googleMapsApiKey}&libraries=places`
+        script.async = true
+        script.defer = true
 
-          <div class="map-info" style="
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            background: white;
-            padding: 8px 12px;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            font-size: 12px;
-            color: #666;
-          ">
-            Lat: ${this.locality.Latitude}<br>
-            Lng: ${this.locality.Longitude}<br>
-            <small style="color: #999;">Demo Map - Integrate with real map service</small>
+        script.onload = () => {
+          window.googleMapsLoading = false
+          resolve()
+        }
+
+        script.onerror = () => {
+          window.googleMapsLoading = false
+          reject(new Error('Failed to load Google Maps API'))
+        }
+
+        document.head.appendChild(script)
+      })
+    },
+
+    // 创建地图
+    createMap(container) {
+      try {
+        // 创建地图实例
+        this.map = new google.maps.Map(container, {
+          ...this.defaultMapOptions,
+          center: this.coordinates,
+          zoom: this.currentZoom
+        })
+
+        // 创建标记
+        this.createMarker()
+
+        // 添加事件监听器
+        this.addMapEventListeners()
+
+        this.mapLoaded = true
+        this.mapLoading = false
+
+        this.$message.success('Google Maps loaded successfully')
+
+      } catch (error) {
+        console.error('Failed to create map:', error)
+        this.mapLoadError = error.message
+        this.mapLoading = false
+      }
+    },
+
+    // 创建标记
+    createMarker() {
+      if (!this.map || !this.coordinates) return
+
+      this.marker = new google.maps.Marker({
+        position: this.coordinates,
+        map: this.map,
+        title: this.locality.LocalityString || this.locality.FieldNo || 'Locality',
+        icon: {
+          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+            <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="16" cy="16" r="8" fill="#ff4444" stroke="#ffffff" stroke-width="3"/>
+            </svg>
+          `),
+          scaledSize: new google.maps.Size(32, 32),
+          anchor: new google.maps.Point(16, 16)
+        }
+      })
+
+      // 添加信息窗口
+      const infoWindow = new google.maps.InfoWindow({
+        content: `
+          <div style="padding: 8px;">
+            <h4 style="margin: 0 0 8px 0;">${this.locality.FieldNo || 'Locality'}</h4>
+            <p style="margin: 0; color: #666;">${this.locality.LocalityString || 'No description'}</p>
+            <p style="margin: 4px 0 0 0; font-size: 12px; color: #999;">
+              ${this.locality.Lat}, ${this.locality.Lon}
+            </p>
           </div>
+        `
+      })
 
-          <div class="zoom-controls" style="
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: white;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            overflow: hidden;
-          ">
-            <button onclick="window.demoZoomIn()" style="
-              display: block;
-              width: 30px;
-              height: 30px;
-              border: none;
-              background: white;
-              cursor: pointer;
-              border-bottom: 1px solid #eee;
-            ">+</button>
-            <button onclick="window.demoZoomOut()" style="
-              display: block;
-              width: 30px;
-              height: 30px;
-              border: none;
-              background: white;
-              cursor: pointer;
-            ">-</button>
-          </div>
-        </div>
-      `;
+      this.marker.addListener('click', () => {
+        infoWindow.open(this.map, this.marker)
+      })
+    },
 
-      // 添加全局缩放函数（演示用）
-      window.demoZoomIn = () => this.zoomIn();
-      window.demoZoomOut = () => this.zoomOut();
+    // 添加地图事件监听器
+    addMapEventListeners() {
+      if (!this.map) return
 
-      // 模拟点击事件
-      mapContainer.addEventListener('click', (e) => {
-        const rect = mapContainer.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        console.log(`Clicked at: ${x}, ${y}`);
-      });
+      // 监听缩放变化
+      this.map.addListener('zoom_changed', () => {
+        this.currentZoom = this.map.getZoom()
+      })
+
+      // 监听地图类型变化
+      this.map.addListener('maptypeid_changed', () => {
+        this.currentMapType = this.map.getMapTypeId()
+      })
     },
 
     // 缩放控制
     zoomIn() {
-      this.currentZoom = Math.min(this.currentZoom + 1, 20);
-      this.$message.info(`Zoomed in to level ${this.currentZoom}`);
+      if (this.map) {
+        this.map.setZoom(this.map.getZoom() + 1)
+      }
     },
 
     zoomOut() {
-      this.currentZoom = Math.max(this.currentZoom - 1, 1);
-      this.$message.info(`Zoomed out to level ${this.currentZoom}`);
+      if (this.map) {
+        this.map.setZoom(this.map.getZoom() - 1)
+      }
     },
 
     resetView() {
-      this.currentZoom = 10;
-      this.$message.info('View reset to default');
+      if (this.map && this.coordinates) {
+        this.map.setCenter(this.coordinates)
+        this.map.setZoom(10)
+      }
     },
 
     // 处理地图命令
     handleMapCommand(command) {
+      if (!this.map) return
+
       switch (command) {
         case 'satellite':
-          this.currentMapType = 'satellite';
-          this.$message.info('Switched to satellite view');
-          break;
+          this.map.setMapTypeId('satellite')
+          break
         case 'terrain':
-          this.currentMapType = 'terrain';
-          this.$message.info('Switched to terrain view');
-          break;
-        case 'street':
-          this.currentMapType = 'roadmap';
-          this.$message.info('Switched to street view');
-          break;
-        case 'fullscreen':
-          this.openFullscreenMap();
-          break;
+          this.map.setMapTypeId('terrain')
+          break
+        case 'roadmap':
+          this.map.setMapTypeId('roadmap')
+          break
         case 'directions':
-          this.getDirections();
-          break;
-        case 'export':
-          this.exportMapImage();
-          break;
+          this.getDirections()
+          break
       }
     },
 
-    // 切换图层
-    toggleLayer(layerName) {
-      this.$message.info(`${this.layers[layerName] ? 'Enabled' : 'Disabled'} ${layerName} layer`);
+    // 重新加载地图
+    retryLoadMap() {
+      this.mapLoadError = null
+      this.mapLoaded = false
+      this.initializeGoogleMaps()
+    },
 
-      if (layerName === 'nearby' && this.layers[layerName]) {
-        this.searchNearbyLocalities();
+    // 清理地图
+    cleanupMap() {
+      if (this.map) {
+        google.maps.event.clearInstanceListeners(this.map)
+        this.map = null
       }
-    },
-
-    // 搜索附近地点
-    async searchNearbyLocalities() {
-      if (!this.layers.nearby) return;
-
-      this.searchingNearby = true;
-      this.nearbyLocalities = [];
-
-      try {
-        const response = await this.$api.searchLocalityByCoordinates({
-          latitude: this.locality.Latitude,
-          longitude: this.locality.Longitude,
-          radius: this.searchRadius,
-          exclude: this.locality.LocalityID
-        });
-
-        if (response.code === 20000) {
-          this.nearbyLocalities = response.data.items || [];
-          this.$message.success(`Found ${this.nearbyLocalities.length} nearby localities`);
-        }
-      } catch (error) {
-        console.error('Failed to search nearby localities:', error);
-        this.$message.error('Failed to search nearby localities');
-      } finally {
-        this.searchingNearby = false;
+      if (this.marker) {
+        this.marker.setMap(null)
+        this.marker = null
       }
-    },
-
-    // 聚焦到附近地点
-    focusOnLocality(locality) {
-      this.$message.info(`Focusing on ${locality.LocalityName}`);
-      // 在实际地图中，这里会移动地图中心到指定位置
-    },
-
-    // 查看附近地点详情
-    viewNearbyDetails(locality) {
-      this.$emit('view-locality-details', locality);
     },
 
     // 复制坐标
     copyCoordinates() {
-      const coordText = `${this.locality.Latitude}, ${this.locality.Longitude}`;
+      const coordText = `${this.locality.Lat}, ${this.locality.Lon}`
 
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(coordText).then(() => {
-          this.$message.success('Coordinates copied to clipboard');
+          this.$message.success('Coordinates copied to clipboard')
         }).catch(() => {
-          this.fallbackCopyToClipboard(coordText);
-        });
+          this.fallbackCopyToClipboard(coordText)
+        })
       } else {
-        this.fallbackCopyToClipboard(coordText);
+        this.fallbackCopyToClipboard(coordText)
       }
     },
 
     // 备用复制方法
     fallbackCopyToClipboard(text) {
-      const textArea = document.createElement('textarea');
-      textArea.value = text;
-      document.body.appendChild(textArea);
-      textArea.focus();
-      textArea.select();
+      const textArea = document.createElement('textarea')
+      textArea.value = text
+      document.body.appendChild(textArea)
+      textArea.focus()
+      textArea.select()
 
       try {
-        document.execCommand('copy');
-        this.$message.success('Coordinates copied to clipboard');
+        document.execCommand('copy')
+        this.$message.success('Coordinates copied to clipboard')
       } catch (err) {
-        this.$message.error('Failed to copy coordinates');
+        this.$message.error('Failed to copy coordinates')
       }
 
-      document.body.removeChild(textArea);
-    },
-
-    // 打开全屏地图
-    openFullscreenMap() {
-      this.showFullscreenMap = true;
-      this.$nextTick(() => {
-        this.initializeFullscreenMap();
-      });
-    },
-
-    // 初始化全屏地图
-    initializeFullscreenMap() {
-      const mapContainer = document.getElementById('fullscreen-map');
-      if (!mapContainer) return;
-
-      // 创建更大的模拟地图
-      mapContainer.innerHTML = `
-        <div class="simulated-map" style="
-          width: 100%;
-          height: calc(100vh - 150px);
-          background: linear-gradient(45deg, #e8f4f8 0%, #d1e7dd 50%, #c3e6cb 100%);
-          position: relative;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          overflow: hidden;
-        ">
-          <div class="map-grid" style="
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-image:
-              linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px);
-            background-size: 80px 80px;
-          "></div>
-
-          <div class="location-marker" style="
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 40px;
-            height: 40px;
-            background: #ff4444;
-            border: 4px solid white;
-            border-radius: 50%;
-            box-shadow: 0 0 15px rgba(0,0,0,0.3);
-            z-index: 10;
-          "></div>
-
-          <div class="map-info" style="
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            background: white;
-            padding: 15px 20px;
-            border-radius: 6px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            font-size: 14px;
-            color: #666;
-          ">
-            <h4 style="margin: 0 0 8px 0; color: #333;">${this.locality.LocalityName || 'Locality ' + this.locality.LocalityID}</h4>
-            Latitude: ${this.locality.Latitude}<br>
-            Longitude: ${this.locality.Longitude}<br>
-            <small style="color: #999;">Fullscreen Map View</small>
-          </div>
-        </div>
-      `;
+      document.body.removeChild(textArea)
     },
 
     // 获取路线
     getDirections() {
-      const url = `https://www.google.com/maps/dir/?api=1&destination=${this.locality.Latitude},${this.locality.Longitude}`;
-      window.open(url, '_blank');
-      this.$message.info('Opening Google Maps for directions');
-    },
-
-    // 导出地图图像
-    exportMapImage() {
-      // 在实际应用中，这里会导出地图的图像
-      this.$message.info('Map image export is not implemented in demo mode');
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${this.locality.Lat},${this.locality.Lon}`
+      window.open(url, '_blank')
+      this.$message.info('Opening Google Maps for directions')
     }
   }
-};
+}
 </script>
 
 <style scoped>
@@ -738,8 +569,52 @@ export default {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(255,255,255,0.8);
+  background: rgba(255,255,255,0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 1000;
+}
+
+.loading-content {
+  text-align: center;
+  color: #666;
+}
+
+.loading-content i {
+  font-size: 24px;
+  margin-bottom: 10px;
+  display: block;
+}
+
+.map-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 300px;
+  background: #f8f9fa;
+  border-radius: 6px;
+}
+
+.error-content {
+  text-align: center;
+  color: #999;
+}
+
+.error-content i {
+  font-size: 48px;
+  color: #ddd;
+  margin-bottom: 15px;
+}
+
+.error-content h4 {
+  margin: 0 0 10px 0;
+  color: #666;
+}
+
+.error-content p {
+  margin: 0 0 20px 0;
+  color: #999;
 }
 
 .no-coordinates {
@@ -767,9 +642,7 @@ export default {
 }
 
 .map-info-panel {
-  background: white;
-  border-radius: 6px;
-  overflow: hidden;
+  margin-top: 20px;
 }
 
 .info-content {
@@ -799,119 +672,6 @@ export default {
   color: #333;
 }
 
-.layer-controls {
-  margin-bottom: 20px;
-}
-
-.layer-controls .el-checkbox {
-  display: block;
-  margin-bottom: 10px;
-}
-
-.layer-info {
-  padding-top: 15px;
-  border-top: 1px solid #f0f0f0;
-}
-
-.layer-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.layer-label {
-  color: #666;
-  font-size: 13px;
-}
-
-.layer-value {
-  color: #333;
-  font-weight: 500;
-  font-size: 13px;
-}
-
-.nearby-controls {
-  margin-bottom: 15px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.radius-display {
-  color: #666;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.nearby-list {
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.nearby-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px;
-  border: 1px solid #f0f0f0;
-  border-radius: 4px;
-  margin-bottom: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.nearby-item:hover {
-  border-color: #409EFF;
-  background: #f0f9ff;
-}
-
-.nearby-info {
-  flex: 1;
-}
-
-.nearby-name {
-  font-weight: 500;
-  color: #333;
-  margin-bottom: 4px;
-}
-
-.nearby-details {
-  font-size: 12px;
-  color: #666;
-}
-
-.nearby-details .distance {
-  background: #e7f3ff;
-  color: #1976d2;
-  padding: 1px 6px;
-  border-radius: 3px;
-  margin-right: 10px;
-}
-
-.nearby-details .coords {
-  font-family: monospace;
-}
-
-.nearby-loading,
-.no-nearby {
-  text-align: center;
-  padding: 20px;
-  color: #999;
-}
-
-.nearby-loading i {
-  margin-right: 8px;
-}
-
-.fullscreen-map-dialog .el-dialog__body {
-  padding: 0;
-}
-
-.fullscreen-map-canvas {
-  width: 100%;
-  height: calc(100vh - 150px);
-}
-
 /* 响应式设计 */
 @media (max-width: 768px) {
   .map-header {
@@ -926,12 +686,6 @@ export default {
 
   .coordinates-display {
     flex-wrap: wrap;
-  }
-
-  .nearby-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
   }
 }
 </style>

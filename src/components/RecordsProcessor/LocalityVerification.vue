@@ -1,6 +1,6 @@
 <!--
   LocalityVerification.vue
-  地点验证组件 - 处理 verbatim locality 到正式 locality 的匹配
+  地点验证组件 - 增强版本，支持精确搜索和模糊搜索
 -->
 <template>
   <div class="locality-verification">
@@ -14,14 +14,14 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <div class="verbatim-field">
-              <label>Locality String:</label>
-              <span>{{verbatimData.verbatimLocalityString || '-'}}</span>
+              <label>Field No:</label>
+              <span>{{ getVerbatimField('field_number') || '-' }}</span>
             </div>
           </el-col>
           <el-col :span="12">
             <div class="verbatim-field">
-              <label>Country:</label>
-              <span>{{verbatimData.verbatimCountry || '-'}}</span>
+              <label>Locality String:</label>
+              <span>{{ getVerbatimField('locality_string') || '-' }}</span>
             </div>
           </el-col>
         </el-row>
@@ -29,20 +29,20 @@
         <el-row :gutter="20">
           <el-col :span="8">
             <div class="verbatim-field">
+              <label>Country:</label>
+              <span>{{ getVerbatimField('country') || '-' }}</span>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="verbatim-field">
               <label>State:</label>
-              <span>{{verbatimData.verbatimState || '-'}}</span>
+              <span>{{ getVerbatimField('state') || '-' }}</span>
             </div>
           </el-col>
           <el-col :span="8">
             <div class="verbatim-field">
               <label>County:</label>
-              <span>{{verbatimData.verbatimCounty || '-'}}</span>
-            </div>
-          </el-col>
-          <el-col :span="8">
-            <div class="verbatim-field">
-              <label>Drainage:</label>
-              <span>{{verbatimData.verbatimDrainage || '-'}}</span>
+              <span>{{ getVerbatimField('county') || '-' }}</span>
             </div>
           </el-col>
         </el-row>
@@ -50,28 +50,44 @@
         <el-row :gutter="20">
           <el-col :span="8">
             <div class="verbatim-field">
+              <label>Drainage:</label>
+              <span>{{ getVerbatimField('drainage') || '-' }}</span>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="verbatim-field">
               <label>Waterbody:</label>
-              <span>{{verbatimData.verbatimWaterbody || '-'}}</span>
+              <span>{{ getVerbatimField('waterbody') || '-' }}</span>
             </div>
           </el-col>
           <el-col :span="8">
             <div class="verbatim-field">
-              <label>Latitude:</label>
-              <span>{{verbatimData.verbatimLatitude || '-'}}</span>
-            </div>
-          </el-col>
-          <el-col :span="8">
-            <div class="verbatim-field">
-              <label>Longitude:</label>
-              <span>{{verbatimData.verbatimLongitude || '-'}}</span>
+              <label>Date:</label>
+              <span>{{ formatDate(getVerbatimField('collect_date')) || '-' }}</span>
             </div>
           </el-col>
         </el-row>
 
-        <div v-if="verbatimData.originalText" class="original-text">
-          <label>Original Text:</label>
-          <span class="original-text-content">{{verbatimData.originalText}}</span>
-        </div>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <div class="verbatim-field">
+              <label>Collector:</label>
+              <span>{{ getVerbatimField('collector') || '-' }}</span>
+            </div>
+          </el-col>
+          <el-col :span="6">
+            <div class="verbatim-field">
+              <label>Latitude:</label>
+              <span>{{ getVerbatimField('latitude') || '-' }}</span>
+            </div>
+          </el-col>
+          <el-col :span="6">
+            <div class="verbatim-field">
+              <label>Longitude:</label>
+              <span>{{ getVerbatimField('longitude') || '-' }}</span>
+            </div>
+          </el-col>
+        </el-row>
       </div>
 
       <div v-else class="no-verbatim">
@@ -84,175 +100,197 @@
     <el-card class="current-match-card">
       <div slot="header" class="card-header">
         <span><i class="el-icon-check"></i> Current Match</span>
-        <el-button
-          v-if="record.localityId"
-          size="mini"
-          type="danger"
-          @click="clearMatch">
-          Clear Match
-        </el-button>
+        <div style="float: right;">
+          <el-button
+            v-if="currentMatchedLocality"
+            size="mini"
+            type="danger"
+            @click="clearMatch">
+            Clear Match
+          </el-button>
+          <el-button
+            v-if="verbatimData && getVerbatimField('field_number')"
+            size="mini"
+            type="primary"
+            :loading="autoSearchLoading"
+            @click="searchByFieldNo">
+            <i class="el-icon-magic-stick"></i>
+            Find by Field No
+          </el-button>
+        </div>
       </div>
 
-      <div v-if="record.localityId && record.locality" class="current-match">
+      <div v-if="currentMatchedLocality" class="current-match">
         <div class="match-info">
-          <div class="match-name">{{record.locality.LocalityName}}</div>
+          <div class="match-name">{{ currentMatchedLocality.FieldNo || currentMatchedLocality.LocalityString }}</div>
           <div class="match-details">
-            <span class="detail-item">ID: {{record.locality.LocalityID}}</span>
-            <span class="detail-item">Country: {{record.locality.Country}}</span>
-            <span class="detail-item">State: {{record.locality.State}}</span>
-            <span class="detail-item">County: {{record.locality.County}}</span>
-            <span v-if="record.locality.Latitude && record.locality.Longitude" class="detail-item">
-              Coordinates: {{record.locality.Latitude}}, {{record.locality.Longitude}}
+            <span class="detail-item">ID: {{ currentMatchedLocality.Locality1ID }}</span>
+            <span class="detail-item">Field No: {{ currentMatchedLocality.FieldNo || 'N/A' }}</span>
+            <span class="detail-item">Country: {{ currentMatchedLocality.Country }}</span>
+            <span class="detail-item">State: {{ currentMatchedLocality.State }}</span>
+            <span class="detail-item">County: {{ currentMatchedLocality.County }}</span>
+            <span v-if="currentMatchedLocality.Lat && currentMatchedLocality.Lon" class="detail-item">
+              Coordinates: {{ currentMatchedLocality.Lat }}, {{ currentMatchedLocality.Lon }}
             </span>
+          </div>
+          <div class="match-actions" style="margin-top: 10px;">
+            <el-button
+              size="mini"
+              type="success"
+              @click="confirmCurrentMatch">
+              <i class="el-icon-check"></i>
+              Confirm Match
+            </el-button>
+            <el-button
+              size="mini"
+              @click="viewLocalityDetails(currentMatchedLocality)">
+              <i class="el-icon-view"></i>
+              View Details
+            </el-button>
           </div>
         </div>
       </div>
 
       <div v-else class="no-match">
-        <i class="el-icon-warning-outline"></i>
-        No locality matched yet
+        <div v-if="autoSearchLoading" class="auto-search-loading">
+          <i class="el-icon-loading"></i>
+          Searching by Field No...
+        </div>
+        <div v-else-if="autoSearchNotFound && verbatimData && getVerbatimField('field_number')" class="auto-search-not-found">
+          <i class="el-icon-info"></i>
+          No existing locality found for Field No: {{ getVerbatimField('field_number') }}
+        </div>
+        <div v-else class="no-match-text">
+          <i class="el-icon-warning-outline"></i>
+          No locality matched yet
+        </div>
       </div>
     </el-card>
 
-    <!-- 搜索和匹配区域 -->
+    <!-- 搜索区域 -->
     <el-card class="search-card">
       <div slot="header" class="card-header">
-        <span><i class="el-icon-search"></i> Search & Match Locality</span>
-        <el-button
-          size="mini"
-          @click="autoMatch"
-          :loading="autoMatching"
-          :disabled="!verbatimData">
-          <i class="el-icon-magic-stick"></i>
-          Auto Match
-        </el-button>
+        <span><i class="el-icon-search"></i> Search Localities</span>
+        <el-radio-group v-model="searchMode" size="mini">
+          <el-radio-button label="simple">Simple</el-radio-button>
+          <el-radio-button label="advanced">Advanced</el-radio-button>
+        </el-radio-group>
       </div>
 
-      <!-- 搜索选项卡 -->
-      <el-tabs v-model="searchMode" class="search-tabs">
-        <el-tab-pane label="General Search" name="general">
-          <div class="search-section">
-            <el-input
-              v-model="searchQuery"
-              placeholder="Search by locality name, country, state, county..."
-              @input="handleSearchInput"
-              @keyup.enter.native="performSearch"
-              prefix-icon="el-icon-search"
-              clearable>
-              <el-button
-                slot="append"
-                @click="performSearch"
-                :loading="searching">
-                Search
-              </el-button>
-            </el-input>
-          </div>
-        </el-tab-pane>
+      <!-- 简单搜索 -->
+      <div v-if="searchMode === 'simple'" class="search-section">
+        <el-input
+          v-model="searchQuery"
+          @input="handleSearchInput"
+          @keyup.enter.native="performSearch"
+          placeholder="Search by field number, locality name, country, state..."
+          prefix-icon="el-icon-search"
+          clearable>
+          <el-button
+            slot="append"
+            @click="performSearch"
+            :loading="searching">
+            Search
+          </el-button>
+        </el-input>
 
-        <el-tab-pane label="Advanced Search" name="advanced">
-          <div class="advanced-search">
-            <el-row :gutter="20">
-              <el-col :span="12">
+        <div class="search-options">
+          <el-checkbox v-model="fuzzySearch">Enable fuzzy search</el-checkbox>
+        </div>
+      </div>
+
+      <!-- 高级搜索 -->
+      <div v-if="searchMode === 'advanced'" class="advanced-search">
+        <el-form :model="advancedSearch" label-width="100px" size="small">
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item label="Field No">
                 <el-input
-                  v-model="advancedSearch.localityName"
-                  placeholder="Locality Name"
+                  v-model="advancedSearch.fieldNo"
+                  placeholder="Exact field number"
                   @keyup.enter.native="performAdvancedSearch">
                 </el-input>
-              </el-col>
-              <el-col :span="12">
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="Locality ID">
+                <el-input
+                  v-model="advancedSearch.localityId"
+                  placeholder="Exact locality ID"
+                  style="width: 100%">
+                </el-input>
+              </el-form-item>
+            </el-col>
+          </el-row>
+
+          <el-row :gutter="20">
+            <el-col :span="8">
+              <el-form-item label="Country">
                 <el-input
                   v-model="advancedSearch.country"
-                  placeholder="Country"
+                  placeholder="Country name"
                   @keyup.enter.native="performAdvancedSearch">
                 </el-input>
-              </el-col>
-            </el-row>
-
-            <el-row :gutter="20" style="margin-top: 15px;">
-              <el-col :span="8">
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="State">
                 <el-input
                   v-model="advancedSearch.state"
                   placeholder="State/Province"
                   @keyup.enter.native="performAdvancedSearch">
                 </el-input>
-              </el-col>
-              <el-col :span="8">
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="County">
                 <el-input
                   v-model="advancedSearch.county"
                   placeholder="County"
                   @keyup.enter.native="performAdvancedSearch">
                 </el-input>
-              </el-col>
-              <el-col :span="8">
+              </el-form-item>
+            </el-col>
+          </el-row>
+
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item label="Drainage">
                 <el-input
                   v-model="advancedSearch.drainage"
-                  placeholder="Drainage"
+                  placeholder="Drainage system"
                   @keyup.enter.native="performAdvancedSearch">
                 </el-input>
-              </el-col>
-            </el-row>
-
-            <div style="margin-top: 15px; text-align: right;">
-              <el-button @click="clearAdvancedSearch">Clear</el-button>
-              <el-button type="primary" @click="performAdvancedSearch" :loading="searching">
-                Advanced Search
-              </el-button>
-            </div>
-          </div>
-        </el-tab-pane>
-
-        <el-tab-pane label="Coordinate Search" name="coordinate">
-          <div class="coordinate-search">
-            <el-row :gutter="20">
-              <el-col :span="12">
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="General">
                 <el-input
-                  v-model="coordinateSearch.latitude"
-                  placeholder="Latitude"
-                  type="number">
-                  <template slot="prepend">Lat</template>
+                  v-model="advancedSearch.query"
+                  placeholder="General search term"
+                  @keyup.enter.native="performAdvancedSearch">
                 </el-input>
-              </el-col>
-              <el-col :span="12">
-                <el-input
-                  v-model="coordinateSearch.longitude"
-                  placeholder="Longitude"
-                  type="number">
-                  <template slot="prepend">Lng</template>
-                </el-input>
-              </el-col>
-            </el-row>
+              </el-form-item>
+            </el-col>
+          </el-row>
 
-            <div style="margin-top: 15px;">
-              <span>Search Radius:</span>
-              <el-slider
-                v-model="coordinateSearch.radius"
-                :min="1"
-                :max="100"
-                :step="1"
-                show-input
-                style="margin-top: 10px;">
-              </el-slider>
-              <span class="radius-label">{{coordinateSearch.radius}} km</span>
-            </div>
+<!--          <el-form-item>-->
+<!--            <el-checkbox v-model="advancedSearch.fuzzy">Enable fuzzy search</el-checkbox>-->
+<!--          </el-form-item>-->
 
-            <div style="margin-top: 15px; text-align: right;">
-              <el-button @click="clearCoordinateSearch">Clear</el-button>
-              <el-button
-                type="primary"
-                @click="performCoordinateSearch"
-                :loading="searching"
-                :disabled="!coordinateSearch.latitude || !coordinateSearch.longitude">
-                Search by Coordinates
-              </el-button>
-            </div>
-          </div>
-        </el-tab-pane>
-      </el-tabs>
+          <el-form-item>
+            <el-button @click="clearAdvancedSearch">Clear</el-button>
+            <el-button type="primary" @click="performAdvancedSearch" :loading="searching">
+              Search
+            </el-button>
+          </el-form-item>
+        </el-form>
+      </div>
 
       <!-- 搜索结果 -->
       <div v-if="searchResults.length > 0" class="search-results">
         <div class="results-header">
-          <span>{{searchResults.length}} results found</span>
+          <span>{{ searchResults.length }} results found ({{ searchType }})</span>
           <el-pagination
             v-if="searchResults.length > pageSize"
             :current-page="currentPage"
@@ -266,27 +304,26 @@
 
         <div class="results-list">
           <div
-            v-for="(locality, index) in paginatedResults"
-            :key="locality.LocalityID"
+            v-for="locality in paginatedResults"
+            :key="locality.Locality1ID"
             class="result-item"
-            :class="{'selected': selectedLocality && selectedLocality.LocalityID === locality.LocalityID}"
+            :class="{'selected': selectedLocality && selectedLocality.Locality1ID === locality.Locality1ID}"
             @click="selectLocality(locality)">
 
             <div class="result-content">
               <div class="result-name">
-                <span class="locality-name">{{locality.LocalityName}}</span>
-                <span v-if="locality.distance" class="distance-badge">
-                  {{locality.distance.toFixed(1)}} km
-                </span>
+                <span class="locality-name">{{ locality.FieldNo || locality.LocalityString || 'Unnamed Locality' }}</span>
+                <span class="locality-id">ID: {{ locality.Locality1ID }}</span>
               </div>
 
               <div class="result-details">
-                <span class="detail">Country: {{locality.Country || 'N/A'}}</span>
-                <span class="detail">State: {{locality.State || 'N/A'}}</span>
-                <span class="detail">County: {{locality.County || 'N/A'}}</span>
-                <span v-if="locality.Drainage" class="detail">Drainage: {{locality.Drainage}}</span>
-                <span v-if="locality.Latitude && locality.Longitude" class="detail">
-                  Coordinates: {{locality.Latitude}}, {{locality.Longitude}}
+                <span class="detail">Field No: {{ locality.FieldNo || 'N/A' }}</span>
+                <span class="detail">Country: {{ locality.Country || 'N/A' }}</span>
+                <span class="detail">State: {{ locality.State || 'N/A' }}</span>
+                <span class="detail">County: {{ locality.County || 'N/A' }}</span>
+                <span v-if="locality.Drainage" class="detail">Drainage: {{ locality.Drainage }}</span>
+                <span v-if="locality.Lat && locality.Lon" class="detail">
+                  Coordinates: {{ locality.Lat }}, {{ locality.Lon }}
                 </span>
               </div>
 
@@ -294,22 +331,15 @@
                 <el-button
                   size="mini"
                   type="primary"
-                  @click.stop="confirmMatch(locality)">
+                  @click.stop="setAsCurrentMatch(locality)">
                   <i class="el-icon-check"></i>
-                  Select
+                  Use This
                 </el-button>
                 <el-button
                   size="mini"
                   @click.stop="viewLocalityDetails(locality)">
                   <i class="el-icon-view"></i>
                   Details
-                </el-button>
-                <el-button
-                  v-if="locality.Latitude && locality.Longitude"
-                  size="mini"
-                  @click.stop="viewOnMap(locality)">
-                  <i class="el-icon-location"></i>
-                  Map
                 </el-button>
               </div>
             </div>
@@ -327,16 +357,30 @@
           </el-button>
         </div>
       </div>
+
+      <!-- 添加新地点按钮 -->
+      <div class="create-locality-section">
+        <el-divider content-position="center">Or Create New</el-divider>
+        <div style="text-align: center;">
+          <el-button type="success" @click="showCreateLocalityDialog">
+            <i class="el-icon-plus"></i>
+            Create New Locality
+          </el-button>
+        </div>
+      </div>
     </el-card>
 
     <!-- 创建新地点对话框 -->
     <el-dialog
       title="Create New Locality"
       :visible.sync="showCreateDialog"
-      width="600px">
+      width="80%"
+      :close-on-click-modal="false"
+      :append-to-body="true">
 
       <create-locality-form
         :verbatim-data="verbatimData"
+        :google-maps-api-key="googleMapsApiKey"
         @submit="handleCreateLocality"
         @cancel="showCreateDialog = false"
       />
@@ -346,39 +390,27 @@
     <el-dialog
       title="Locality Details"
       :visible.sync="showDetailsDialog"
-      width="700px">
+      width="70%"
+      :append-to-body="true">
 
       <locality-details-view
         v-if="selectedLocalityForDetails"
         :locality="selectedLocalityForDetails"
       />
     </el-dialog>
-
-    <!-- 地图查看对话框 -->
-    <el-dialog
-      title="Locality Map"
-      :visible.sync="showMapDialog"
-      width="800px">
-
-      <locality-map-view
-        v-if="selectedLocalityForMap"
-        :locality="selectedLocalityForMap"
-      />
-    </el-dialog>
   </div>
 </template>
 
 <script>
-import CreateLocalityForm from '@/components/RecordsProcessor/CreateLocalityForm';
-import LocalityDetailsView from '@/components/RecordsProcessor/LocalityDetailsView';
-import LocalityMapView from '@/components/RecordsProcessor/LocalityMapView';
+import CreateLocalityForm from '@/components/RecordsProcessor/CreateLocalityForm'
+import LocalityDetailsView from '@/components/RecordsProcessor/LocalityDetailsView'
+import { searchLocalities, getLocalityDetails, createLocality } from "@/api/table";
 
 export default {
   name: 'LocalityVerification',
   components: {
     CreateLocalityForm,
-    LocalityDetailsView,
-    LocalityMapView
+    LocalityDetailsView
   },
   props: {
     record: {
@@ -388,29 +420,41 @@ export default {
     verbatimData: {
       type: Object,
       default: null
+    },
+    googleMapsApiKey: {
+      type: String,
+      default: () => process.env.VUE_APP_GOOGLE_MAPS_API_KEY || ''
     }
   },
   data() {
     return {
+      // 当前匹配的locality
+      currentMatchedLocality: null,
+
       // 搜索相关
-      searchMode: 'general',
+      searchMode: 'simple',
       searchQuery: '',
+      searchResults: [],
+      searchType: '',
+      searching: false,
+      hasSearched: false,
+      fuzzySearch: true,
+
+      // 高级搜索
       advancedSearch: {
-        localityName: '',
+        fieldNo: '',
+        localityId: null,
         country: '',
         state: '',
         county: '',
-        drainage: ''
+        drainage: '',
+        query: '',
+        fuzzy: true
       },
-      coordinateSearch: {
-        latitude: '',
-        longitude: '',
-        radius: 10
-      },
-      searchResults: [],
-      searching: false,
-      hasSearched: false,
-      autoMatching: false,
+
+      // 自动搜索相关
+      autoSearchLoading: false,
+      autoSearchNotFound: false,
 
       // 分页
       currentPage: 1,
@@ -419,12 +463,10 @@ export default {
       // 选择的地点
       selectedLocality: null,
       selectedLocalityForDetails: null,
-      selectedLocalityForMap: null,
 
       // 对话框
       showCreateDialog: false,
       showDetailsDialog: false,
-      showMapDialog: false,
 
       // 去抖计时器
       searchDebouncer: null
@@ -432,246 +474,334 @@ export default {
   },
   computed: {
     paginatedResults() {
-      const start = (this.currentPage - 1) * this.pageSize;
-      const end = start + this.pageSize;
-      return this.searchResults.slice(start, end);
+      const start = (this.currentPage - 1) * this.pageSize
+      const end = start + this.pageSize
+      return this.searchResults.slice(start, end)
     }
   },
   watch: {
     verbatimData: {
       immediate: true,
       handler(newValue) {
-        if (newValue && this.shouldAutoMatch()) {
-          this.initializeSearch();
+        console.log('LocalityVerification - verbatimData changed:', newValue)
+        if (newValue && this.shouldAutoSearchByFieldNo()) {
+          this.initializeAutoSearch()
+        }
+      }
+    },
+    record: {
+      immediate: true,
+      handler(newValue) {
+        console.log('LocalityVerification - record changed:', newValue)
+        if (newValue && newValue.locality) {
+          this.currentMatchedLocality = newValue.locality
         }
       }
     }
   },
   methods: {
-    // 判断是否应该自动匹配
-    shouldAutoMatch() {
-      return !this.record.localityId && this.verbatimData;
+    // 判断是否应该自动搜索
+    shouldAutoSearchByFieldNo() {
+      return !this.record.localityId && this.verbatimData && this.getVerbatimField('field_number')
     },
 
-    // 初始化搜索
-    initializeSearch() {
-      if (this.verbatimData) {
-        // 优先使用地点字符串
-        if (this.verbatimData.verbatimLocalityString) {
-          this.searchQuery = this.verbatimData.verbatimLocalityString;
+    // 获取verbatim字段的辅助方法
+    getVerbatimField(fieldName) {
+      if (!this.verbatimData) {
+        return null
+      }
+
+      // 新格式：直接字段访问
+      if (this.verbatimData[fieldName] !== undefined) {
+        return this.verbatimData[fieldName]
+      }
+
+      // 兼容旧格式
+      const oldFieldMap = {
+        'field_number': 'verbatim_fieldno',
+        'locality_string': 'verbatim_locality_string',
+        'country': 'verbatim_country',
+        'state': 'verbatim_state',
+        'county': 'verbatim_county',
+        'drainage': 'verbatim_drainage',
+        'waterbody': 'verbatim_waterbody',
+        'latitude': 'verbatim_lat',
+        'longitude': 'verbatim_lon',
+        'collect_date': 'verbatim_collect_date',
+        'collector': 'verbatim_collector'
+      }
+
+      return this.verbatimData[oldFieldMap[fieldName]] || null
+    },
+
+    // 初始化自动搜索
+    initializeAutoSearch() {
+      if (this.verbatimData && this.getVerbatimField('field_number')) {
+        this.searchByFieldNo()
+      }
+    },
+
+    // 基于FieldNo搜索
+    async searchByFieldNo() {
+      const fieldNo = this.getVerbatimField('field_number')
+      if (!fieldNo) {
+        this.$message.warning('No Field No available for matching')
+        return
+      }
+
+      this.autoSearchLoading = true
+      this.autoSearchNotFound = false
+
+      try {
+        const response = await searchLocalities({
+          field_no: fieldNo,
+          limit: 5
+        })
+
+        if (response.code === 20000 && response.data.items && response.data.items.length > 0) {
+          const matchedLocality = response.data.items[0]
+          this.setAsCurrentMatch(matchedLocality)
+          this.$message.success(`Found matching locality for Field No: ${fieldNo}`)
         } else {
-          // 否则组合其他字段
-          const parts = [
-            this.verbatimData.verbatimCountry,
-            this.verbatimData.verbatimState,
-            this.verbatimData.verbatimCounty
-          ].filter(Boolean);
-          this.searchQuery = parts.join(' ');
+          this.autoSearchNotFound = true
+          this.$message.info(`No existing locality found for Field No: ${fieldNo}`)
         }
-
-        // 填充高级搜索字段
-        this.advancedSearch = {
-          localityName: this.verbatimData.verbatimLocalityString || '',
-          country: this.verbatimData.verbatimCountry || '',
-          state: this.verbatimData.verbatimState || '',
-          county: this.verbatimData.verbatimCounty || '',
-          drainage: this.verbatimData.verbatimDrainage || ''
-        };
-
-        // 填充坐标搜索
-        if (this.verbatimData.verbatimLatitude && this.verbatimData.verbatimLongitude) {
-          this.coordinateSearch.latitude = this.verbatimData.verbatimLatitude;
-          this.coordinateSearch.longitude = this.verbatimData.verbatimLongitude;
-        }
+      } catch (error) {
+        this.$message.error('Failed to search by Field No')
+        console.error(error)
+        this.autoSearchNotFound = true
+      } finally {
+        this.autoSearchLoading = false
       }
     },
 
     // 处理搜索输入
     handleSearchInput() {
       if (this.searchDebouncer) {
-        clearTimeout(this.searchDebouncer);
+        clearTimeout(this.searchDebouncer)
       }
 
       this.searchDebouncer = setTimeout(() => {
         if (this.searchQuery.length >= 2) {
-          this.performSearch();
+          this.performSearch()
+        } else if (this.searchQuery.length === 0) {
+          this.searchResults = []
+          this.hasSearched = false
         }
-      }, 300);
+      }, 300)
     },
 
-    // 执行一般搜索
+    // 执行简单搜索
     async performSearch() {
       if (!this.searchQuery.trim()) {
-        this.searchResults = [];
-        this.hasSearched = false;
-        return;
+        this.searchResults = []
+        this.hasSearched = false
+        return
       }
 
-      this.searching = true;
-      this.hasSearched = true;
+      this.searching = true
+      this.hasSearched = true
 
       try {
-        const response = await this.$api.searchLocality({
+        const response = await searchLocalities({
           query: this.searchQuery,
+          fuzzy: this.fuzzySearch,
           limit: 50
-        });
+        })
 
         if (response.code === 20000) {
-          this.searchResults = response.data.items || [];
-          this.currentPage = 1;
+          this.searchResults = response.data.items || []
+          this.searchType = 'simple_search'
+          this.currentPage = 1
         }
       } catch (error) {
-        this.$message.error('Search failed');
-        console.error(error);
-        this.searchResults = [];
+        this.$message.error('Search failed')
+        console.error(error)
+        this.searchResults = []
       } finally {
-        this.searching = false;
+        this.searching = false
       }
     },
 
     // 执行高级搜索
     async performAdvancedSearch() {
-      this.searching = true;
-      this.hasSearched = true;
+      this.searching = true
+      this.hasSearched = true
 
       try {
-        const response = await this.$api.searchLocalityAdvanced(this.advancedSearch);
+        const searchParams = { limit: 50 }
+
+        // 只添加非空参数
+        if (this.advancedSearch.fieldNo) {
+          searchParams.field_no = this.advancedSearch.fieldNo
+        }
+        if (this.advancedSearch.localityId) {
+          searchParams.locality_id = this.advancedSearch.localityId
+        }
+        if (this.advancedSearch.country) {
+          searchParams.country = this.advancedSearch.country
+        }
+        if (this.advancedSearch.state) {
+          searchParams.state = this.advancedSearch.state
+        }
+        if (this.advancedSearch.county) {
+          searchParams.county = this.advancedSearch.county
+        }
+        if (this.advancedSearch.drainage) {
+          searchParams.drainage = this.advancedSearch.drainage
+        }
+        if (this.advancedSearch.query) {
+          searchParams.query = this.advancedSearch.query
+        }
+
+        searchParams.fuzzy = this.advancedSearch.fuzzy
+
+        const response = await searchLocalities(searchParams)
 
         if (response.code === 20000) {
-          this.searchResults = response.data.items || [];
-          this.currentPage = 1;
+          this.searchResults = response.data.items || []
+          this.searchType = 'advanced_search'
+          this.currentPage = 1
         }
       } catch (error) {
-        this.$message.error('Advanced search failed');
-        console.error(error);
-        this.searchResults = [];
+        this.$message.error('Advanced search failed')
+        console.error(error)
+        this.searchResults = []
       } finally {
-        this.searching = false;
-      }
-    },
-
-    // 执行坐标搜索
-    async performCoordinateSearch() {
-      this.searching = true;
-      this.hasSearched = true;
-
-      try {
-        const response = await this.$api.searchLocalityByCoordinates({
-          latitude: parseFloat(this.coordinateSearch.latitude),
-          longitude: parseFloat(this.coordinateSearch.longitude),
-          radius: this.coordinateSearch.radius
-        });
-
-        if (response.code === 20000) {
-          this.searchResults = response.data.items || [];
-          this.currentPage = 1;
-        }
-      } catch (error) {
-        this.$message.error('Coordinate search failed');
-        console.error(error);
-        this.searchResults = [];
-      } finally {
-        this.searching = false;
-      }
-    },
-
-    // 自动匹配
-    async autoMatch() {
-      if (!this.verbatimData) return;
-
-      this.autoMatching = true;
-      try {
-        const response = await this.$api.autoMatchLocality({
-          localityString: this.verbatimData.verbatimLocalityString,
-          country: this.verbatimData.verbatimCountry,
-          state: this.verbatimData.verbatimState,
-          county: this.verbatimData.verbatimCounty,
-          latitude: this.verbatimData.verbatimLatitude,
-          longitude: this.verbatimData.verbatimLongitude
-        });
-
-        if (response.code === 20000 && response.data.matches && response.data.matches.length > 0) {
-          const bestMatch = response.data.matches[0];
-          this.confirmMatch(bestMatch.locality);
-          this.$message.success(`Auto matched: ${bestMatch.locality.LocalityName} (Confidence: ${Math.round(bestMatch.confidence * 100)}%)`);
-        } else {
-          this.$message.warning('No suitable auto match found');
-          // 如果自动匹配失败，执行手动搜索
-          this.performSearch();
-        }
-      } catch (error) {
-        this.$message.error('Auto match failed');
-        console.error(error);
-      } finally {
-        this.autoMatching = false;
+        this.searching = false
       }
     },
 
     // 清除高级搜索
     clearAdvancedSearch() {
       this.advancedSearch = {
-        localityName: '',
+        fieldNo: '',
+        localityId: null,
         country: '',
         state: '',
         county: '',
-        drainage: ''
-      };
-    },
-
-    // 清除坐标搜索
-    clearCoordinateSearch() {
-      this.coordinateSearch = {
-        latitude: '',
-        longitude: '',
-        radius: 10
-      };
+        drainage: '',
+        query: '',
+        fuzzy: true
+      }
+      this.searchResults = []
+      this.hasSearched = false
     },
 
     // 选择地点
     selectLocality(locality) {
-      this.selectedLocality = locality;
+      this.selectedLocality = locality
     },
 
-    // 确认匹配
-    confirmMatch(locality) {
-      this.$emit('locality-selected', locality);
-      this.selectedLocality = locality;
+    // 设置为当前匹配
+    setAsCurrentMatch(locality) {
+      this.currentMatchedLocality = {
+        Locality1ID: locality.Locality1ID,
+        FieldNo: locality.FieldNo,
+        LocalityString: locality.LocalityString,
+        Country: locality.Country,
+        State: locality.State,
+        County: locality.County,
+        Drainage: locality.Drainage,
+        WaterBody: locality.WaterBody,
+        Lat: locality.Lat,
+        Lon: locality.Lon
+      }
+      this.selectedLocality = locality
+      this.$message.success('Locality set as current match')
+    },
+
+    // 确认当前匹配
+    confirmCurrentMatch() {
+      if (this.currentMatchedLocality) {
+        this.$emit('locality-selected', this.currentMatchedLocality)
+        this.$message.success('Locality match confirmed')
+      }
     },
 
     // 清除匹配
     clearMatch() {
-      this.$emit('locality-selected', { LocalityID: null });
+      this.currentMatchedLocality = null
+      this.selectedLocality = null
+      this.autoSearchNotFound = false
+      this.$emit('locality-selected', { Locality1ID: null })
+      this.$message.info('Locality match cleared')
     },
 
     // 查看地点详情
-    viewLocalityDetails(locality) {
-      this.selectedLocalityForDetails = locality;
-      this.showDetailsDialog = true;
-    },
-
-    // 在地图上查看
-    viewOnMap(locality) {
-      this.selectedLocalityForMap = locality;
-      this.showMapDialog = true;
+    async viewLocalityDetails(locality) {
+      try {
+        const response = await getLocalityDetails(locality.Locality1ID)
+        if (response.code === 20000 && response.data.items && response.data.items.length > 0) {
+          this.selectedLocalityForDetails = response.data.items[0]
+          this.showDetailsDialog = true
+        } else {
+          this.$message.error('Failed to load locality details')
+        }
+      } catch (error) {
+        this.$message.error('Failed to load locality details')
+        console.error(error)
+      }
     },
 
     // 显示创建地点对话框
     showCreateLocalityDialog() {
-      this.showCreateDialog = true;
+      this.showCreateDialog = true
     },
 
     // 处理创建新地点
-    handleCreateLocality(localityData) {
-      this.$emit('create-new-locality', localityData);
-      this.showCreateDialog = false;
+    async handleCreateLocality(localityData) {
+      try {
+        const response = await createLocality(localityData)
+
+        if (response.code === 20000) {
+          // 创建成功，构造新的locality对象
+          const newLocality = {
+            Locality1ID: response.data.Locality1ID,
+            FieldNo: response.data.FieldNo,
+            LocalityString: response.data.LocalityString,
+            Country: localityData.Country,
+            State: localityData.State,
+            County: localityData.County,
+            Drainage: localityData.Drainage,
+            WaterBody: localityData.WaterBody,
+            Lat: localityData.Lat,
+            Lon: localityData.Lon
+          }
+
+          // 自动设置为当前匹配
+          this.setAsCurrentMatch(newLocality)
+          this.showCreateDialog = false
+
+          // 自动确认匹配
+          this.confirmCurrentMatch()
+
+          this.$message.success('New locality created and automatically matched!')
+        } else {
+          this.$message.error(response.message || 'Failed to create locality')
+        }
+      } catch (error) {
+        this.$message.error('Failed to create new locality')
+        console.error(error)
+      }
     },
 
     // 分页处理
     handlePageChange(page) {
-      this.currentPage = page;
+      this.currentPage = page
+    },
+
+    // 格式化日期
+    formatDate(date) {
+      if (!date) return ''
+      try {
+        return new Date(date).toLocaleDateString()
+      } catch (error) {
+        return date
+      }
     }
   }
-};
+}
 </script>
 
 <style scoped>
@@ -713,27 +843,6 @@ export default {
   font-style: italic;
 }
 
-.original-text {
-  margin-top: 15px;
-  padding-top: 15px;
-  border-top: 1px solid #e0e0e0;
-}
-
-.original-text label {
-  font-weight: 500;
-  color: #666;
-  display: inline-block;
-  width: 100px;
-}
-
-.original-text-content {
-  background: #fff;
-  padding: 8px 12px;
-  border-radius: 4px;
-  border: 1px solid #d0d0d0;
-  font-family: monospace;
-}
-
 .no-verbatim {
   text-align: center;
   color: #999;
@@ -764,6 +873,7 @@ export default {
   justify-content: center;
   flex-wrap: wrap;
   gap: 15px;
+  margin-bottom: 10px;
 }
 
 .detail-item {
@@ -780,26 +890,37 @@ export default {
   padding: 30px;
 }
 
-/* 搜索区域样式 */
-.search-tabs {
-  margin-bottom: 20px;
+.no-match-text {
+  font-size: 14px;
 }
 
+.auto-search-loading,
+.auto-search-not-found {
+  margin-top: 10px;
+  font-size: 14px;
+}
+
+.auto-search-loading {
+  color: #409EFF;
+}
+
+.auto-search-not-found {
+  color: #E6A23C;
+}
+
+/* 搜索区域样式 */
 .search-section {
   margin-bottom: 20px;
 }
 
-.advanced-search,
-.coordinate-search {
+.search-options {
+  margin-top: 10px;
+}
+
+.advanced-search {
   padding: 15px;
   background: #f8f9fa;
   border-radius: 6px;
-}
-
-.radius-label {
-  margin-left: 10px;
-  color: #666;
-  font-size: 12px;
 }
 
 /* 搜索结果样式 */
@@ -852,12 +973,12 @@ export default {
   color: #333;
 }
 
-.distance-badge {
-  background: #e3f2fd;
-  color: #1976d2;
-  padding: 2px 8px;
-  border-radius: 12px;
+.locality-id {
   font-size: 12px;
+  color: #666;
+  background: #f0f0f0;
+  padding: 2px 6px;
+  border-radius: 3px;
 }
 
 .result-details {
@@ -887,5 +1008,13 @@ export default {
 
 .no-results-text {
   margin-top: 10px;
+}
+
+.create-locality-section {
+  margin-top: 30px;
+}
+
+.match-actions {
+  text-align: center;
 }
 </style>

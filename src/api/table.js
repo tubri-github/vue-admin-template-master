@@ -92,12 +92,20 @@ export function getLocalityNumbersByYear(params) {
   })
 }
 
-export function getLocalityAdvanced(params) {
-  return request({
-    url: api_prefix + 'locality' + '/localityAdvanced',
-    method: 'get',
-    params
-  })
+// 保持向后兼容的函数
+export function getLocalityAdvanced(params = {}) {
+  // 转换为新的搜索接口参数
+  const searchParams = {}
+
+  if (params.fieldNo) {
+    searchParams.field_no = params.fieldNo
+  }
+
+  if (params.limit) {
+    searchParams.limit = params.limit
+  }
+
+  return searchLocalities(searchParams)
 }
 
 export function getSpeciesStats() {
@@ -422,5 +430,50 @@ export function getReport() {
     url: api_prefix + 'lots' + '/validate-data',
     method: 'get',
     responseType: 'blob'
+  })
+}
+
+// api/locality.js
+// Locality相关的API调用函数
+
+/**
+ * 统一搜索地点
+ * @param {Object} params - 搜索参数
+ */
+export function searchLocalities(params = {}) {
+  return request({
+    url: api_prefix + '/locality/search',
+    method: 'get',
+    params
+  })
+}
+
+/**
+ * 根据ID获取地点详情
+ * @param {number} localityId - 地点ID
+ */
+export function getLocalityDetails(localityId) {
+  return request({
+    url: api_prefix + `/locality/${localityId}`,
+    method: 'get'
+  })
+}
+
+/**
+ * 创建新地点
+ * @param {Object} localityData - 地点数据
+ */
+export function createLocality(localityData) {
+  return request({
+    url: api_prefix + '/locality/create',
+    method: 'post',
+    data: localityData
+  })
+}
+
+export function checkLocalityFieldNoExists(params) {
+  return request({
+    url: api_prefix + `/locality/check-fieldno/${params.fieldNo}`,
+    method: 'get'
   })
 }

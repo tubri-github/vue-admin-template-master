@@ -9,7 +9,8 @@
     :before-close="handleClose"
     width="90%"
     top="5vh"
-    class="record-editor-dialog">
+    class="record-editor-dialog"
+  >
 
     <div class="editor-container">
       <!-- 标签页切换 -->
@@ -18,20 +19,22 @@
         <!-- 物种验证标签 -->
         <el-tab-pane name="species">
           <span slot="label">
-            <i class="el-icon-search"></i>
+            <i class="el-icon-search" />
             Species Verification
             <el-tag
               v-if="localRecord.taxonId"
               type="success"
               size="mini"
-              class="ml-2">
+              class="ml-2"
+            >
               ✓
             </el-tag>
             <el-tag
               v-else-if="localRecord.verbatimTaxonomicId"
               type="warning"
               size="mini"
-              class="ml-2">
+              class="ml-2"
+            >
               !
             </el-tag>
           </span>
@@ -49,20 +52,22 @@
         <!-- 地点验证标签 -->
         <el-tab-pane name="locality">
           <span slot="label">
-            <i class="el-icon-location"></i>
+            <i class="el-icon-location" />
             Locality Verification
             <el-tag
               v-if="localRecord.localityId"
               type="success"
               size="mini"
-              class="ml-2">
+              class="ml-2"
+            >
               ✓
             </el-tag>
             <el-tag
               v-else-if="localRecord.verbatimLocalityId"
               type="warning"
               size="mini"
-              class="ml-2">
+              class="ml-2"
+            >
               !
             </el-tag>
           </span>
@@ -79,13 +84,14 @@
         <!-- 记录编辑标签 -->
         <el-tab-pane name="record">
           <span slot="label">
-            <i class="el-icon-edit"></i>
+            <i class="el-icon-edit" />
             Record Details
             <el-tag
               v-if="hasRecordChanges"
               type="info"
               size="mini"
-              class="ml-2">
+              class="ml-2"
+            >
               *
             </el-tag>
           </span>
@@ -102,8 +108,8 @@
     <!-- 对话框底部按钮 -->
     <div slot="footer" class="dialog-footer">
       <div class="footer-left">
-        <el-button @click="resetChanges" :disabled="!hasAnyChanges">
-          <i class="el-icon-refresh"></i>
+        <el-button :disabled="!hasAnyChanges" @click="resetChanges">
+          <i class="el-icon-refresh" />
           Reset Changes
         </el-button>
       </div>
@@ -114,10 +120,11 @@
         </el-button>
         <el-button
           type="primary"
-          @click="saveRecord"
           :loading="saving"
-          :disabled="!hasAnyChanges">
-          <i class="el-icon-check"></i>
+          :disabled="!hasAnyChanges"
+          @click="saveRecord"
+        >
+          <i class="el-icon-check" />
           Save Changes
         </el-button>
       </div>
@@ -126,9 +133,9 @@
 </template>
 
 <script>
-import SpeciesVerification from '@/components/RecordsProcessor/SpeciesVerification';
-import LocalityVerification from '@/components/RecordsProcessor/LocalityVerification';
-import RecordDetailsEditor from '@/components/RecordsProcessor/RecordDetailsEditor';
+import SpeciesVerification from '@/components/RecordsProcessor/SpeciesVerification'
+import LocalityVerification from '@/components/RecordsProcessor/LocalityVerification'
+import RecordDetailsEditor from '@/components/RecordsProcessor/RecordDetailsEditor'
 
 export default {
   name: 'RecordEditorDialog',
@@ -161,26 +168,26 @@ export default {
   },
   computed: {
     hasSpeciesChanges() {
-      return this.localRecord.taxonId !== this.originalRecord.taxonId;
+      return this.localRecord.taxonId !== this.originalRecord.taxonId
     },
 
     hasLocalityChanges() {
-      return this.localRecord.localityId !== this.originalRecord.localityId;
+      return this.localRecord.localityId !== this.originalRecord.localityId
     },
 
     hasRecordChanges() {
       const recordFields = [
         'collectionDate', 'fieldNumber', 'totalNumber',
         'storage', 'jarSize', 'prevNumber', 'inventory', 'remarks'
-      ];
+      ]
 
       return recordFields.some(field =>
         this.localRecord[field] !== this.originalRecord[field]
-      );
+      )
     },
 
     hasAnyChanges() {
-      return this.hasSpeciesChanges || this.hasLocalityChanges || this.hasRecordChanges;
+      return this.hasSpeciesChanges || this.hasLocalityChanges || this.hasRecordChanges
     }
   },
   watch: {
@@ -188,7 +195,7 @@ export default {
       immediate: true,
       async handler(newValue) {
         if (newValue && !this.hasLoaded) {
-          await this.loadRecordData();
+          await this.loadRecordData()
         }
       }
     }
@@ -197,7 +204,7 @@ export default {
     // 加载记录详细数据
     async loadRecordData() {
       try {
-        const apiRecord = this.record._apiData || this.record;
+        const apiRecord = this.record._apiData || this.record
 
         this.localRecord = {
           id: this.record.id,
@@ -219,34 +226,48 @@ export default {
           locality: this.record.locality,
           processingStatus: this.record.processingStatus,
           _apiData: apiRecord
-        };
+        }
 
-        // 提取 verbatim 数据
-        this.verbatimTaxonomic = this.record.verbatimTaxonomic;
-        this.verbatimLocality = this.record.verbatimLocality;
+        // 修复：正确提取 verbatim 数据
+        // 从 API 返回的数据结构中提取
+        if (this.record._apiData && this.record._apiData.verbatim_data) {
+          // 新的API数据结构
+          this.verbatimTaxonomic = this.record._apiData.verbatim_data.taxonomic
+          this.verbatimLocality = this.record._apiData.verbatim_data.locality
+        } else if (this.record.verbatimData) {
+          // 备选：如果数据在verbatimData中
+          this.verbatimTaxonomic = this.record.verbatimData.taxonomic
+          this.verbatimLocality = this.record.verbatimData.locality
+        } else {
+          // 兼容旧格式
+          this.verbatimTaxonomic = this.record.verbatimTaxonomic
+          this.verbatimLocality = this.record.verbatimLocality
+        }
 
         // 提取匹配建议信息
-        this.matchSuggestions = this.record.matchSuggestions;
+        this.matchSuggestions = this.record.matchSuggestions
 
         // 保存原始记录用于变更追踪
-        this.originalRecord = { ...this.localRecord };
+        this.originalRecord = { ...this.localRecord }
 
         console.log('Record Editor Loaded:', {
           localRecord: this.localRecord,
           verbatimTaxonomic: this.verbatimTaxonomic,
-          matchSuggestions: this.matchSuggestions
-        });
+          verbatimLocality: this.verbatimLocality,
+          matchSuggestions: this.matchSuggestions,
+          originalRecord: this.record
+        })
 
-        this.hasLoaded = true;
+        this.hasLoaded = true
       } catch (error) {
-        this.$message.error('Failed to load record data');
-        console.error(error);
+        this.$message.error('Failed to load record data')
+        console.error(error)
       }
     },
 
     // 处理物种选择
     handleSpeciesSelected(taxon) {
-      this.localRecord.taxonId = taxon.TaxonID;
+      this.localRecord.taxonId = taxon.TaxonID
       this.localRecord.taxonomic = {
         TaxonID: taxon.TaxonID,
         FullName: taxon.FullName,
@@ -254,59 +275,59 @@ export default {
         Genus: taxon.Genus,
         Species: taxon.Species,
         Author: taxon.Author
-      };
-      this.$message.success(`Species matched: ${taxon.FullName}`);
+      }
+      this.$message.success(`Species matched: ${taxon.FullName}`)
     },
 
     // 处理创建新物种
     async handleCreateNewSpecies(speciesData) {
       try {
-        const response = await this.$api.createTaxonomic(speciesData);
+        const response = await this.$api.createTaxonomic(speciesData)
         if (response.code === 20000) {
-          this.handleSpeciesSelected(response.data);
-          this.$message.success('New species created and matched');
+          this.handleSpeciesSelected(response.data)
+          this.$message.success('New species created and matched')
         }
       } catch (error) {
-        this.$message.error('Failed to create new species');
-        console.error(error);
+        this.$message.error('Failed to create new species')
+        console.error(error)
       }
     },
 
     // 处理地点选择
     handleLocalitySelected(locality) {
-      this.localRecord.localityId = locality.LocalityID;
-      this.localRecord.locality = locality;
-      this.$message.success(`Locality matched: ${locality.LocalityString}`);
+      this.localRecord.localityId = locality.LocalityID
+      this.localRecord.locality = locality
+      this.$message.success(`Locality matched: ${locality.LocalityString}`)
     },
 
     // 处理创建新地点
     async handleCreateNewLocality(localityData) {
       try {
-        const response = await this.$api.createLocality(localityData);
+        const response = await this.$api.createLocality(localityData)
         if (response.code === 20000) {
-          this.handleLocalitySelected(response.data);
-          this.$message.success('New locality created and matched');
+          this.handleLocalitySelected(response.data)
+          this.$message.success('New locality created and matched')
         }
       } catch (error) {
-        this.$message.error('Failed to create new locality');
-        console.error(error);
+        this.$message.error('Failed to create new locality')
+        console.error(error)
       }
     },
 
     // 处理记录字段更新
     handleRecordUpdated(updatedFields) {
-      Object.assign(this.localRecord, updatedFields);
+      Object.assign(this.localRecord, updatedFields)
     },
 
     // 重置更改
     resetChanges() {
-      this.localRecord = { ...this.originalRecord };
-      this.$message.info('Changes reset');
+      this.localRecord = { ...this.originalRecord }
+      this.$message.info('Changes reset')
     },
 
     // 保存记录
     async saveRecord() {
-      this.saving = true;
+      this.saving = true
       try {
         // 准备API更新数据
         const updateData = {
@@ -322,15 +343,15 @@ export default {
           remarks: this.localRecord.remarks,
           // 如果物种和地点都已匹配，取消审核标志
           review_flag: !(this.localRecord.taxonId && this.localRecord.localityId)
-        };
+        }
 
         // 发出保存事件给父组件
-        this.$emit('save', updateData);
+        this.$emit('save', updateData)
       } catch (error) {
-        this.$message.error('Failed to save record');
-        console.error(error);
+        this.$message.error('Failed to save record')
+        console.error(error)
       } finally {
-        this.saving = false;
+        this.saving = false
       }
     },
 
@@ -342,17 +363,17 @@ export default {
             'You have unsaved changes. Are you sure you want to close?',
             'Unsaved Changes',
             { type: 'warning' }
-          );
+          )
         } catch {
-          return; // 用户取消关闭
+          return // 用户取消关闭
         }
       }
 
-      this.hasLoaded = false;
-      this.$emit('close');
+      this.hasLoaded = false
+      this.$emit('close')
     }
   }
-};
+}
 </script>
 
 <style scoped>

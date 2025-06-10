@@ -9,23 +9,24 @@
       v-if="verbatimData"
       type="info"
       :closable="false"
-      class="verbatim-info">
+      class="verbatim-info"
+    >
       <div slot="title" class="verbatim-title">
-        <i class="el-icon-document"></i>
+        <i class="el-icon-document" />
         Based on verbatim data:
       </div>
       <div class="verbatim-details">
         <div class="verbatim-item">
           <span class="verbatim-label">Family:</span>
-          <span class="verbatim-value">{{verbatimData.verbatimFamily || 'Not specified'}}</span>
+          <span class="verbatim-value">{{ verbatimData.family || 'Not specified' }}</span>
         </div>
         <div class="verbatim-item">
           <span class="verbatim-label">Genus:</span>
-          <span class="verbatim-value">{{verbatimData.verbatimGenus || 'Not specified'}}</span>
+          <span class="verbatim-value">{{ verbatimData.genus || 'Not specified' }}</span>
         </div>
         <div class="verbatim-item">
           <span class="verbatim-label">Species:</span>
-          <span class="verbatim-value">{{verbatimData.verbatimSpecies || 'Not specified'}}</span>
+          <span class="verbatim-value">{{ verbatimData.species || 'Not specified' }}</span>
         </div>
       </div>
     </el-alert>
@@ -34,7 +35,8 @@
       ref="speciesForm"
       :model="speciesData"
       :rules="formRules"
-      label-width="140px">
+      label-width="140px"
+    >
 
       <!-- 基础分类信息 -->
       <el-card class="form-section">
@@ -50,13 +52,14 @@
             class="w-full"
             :remote-method="(query) => remoteMethod(query, 'family')"
             :loading="remoteLoading"
-            no-match-text="No matched results found.">
+            no-match-text="No matched results found."
+          >
             <el-option
               v-for="item in familyOptions"
               :key="item.FamilyID"
               :label="item.FamilyName"
-              :value="item.FamilyID">
-            </el-option>
+              :value="item.FamilyID"
+            />
           </el-select>
         </el-form-item>
 
@@ -64,24 +67,24 @@
           <el-input
             v-model="speciesData.Genus"
             placeholder="e.g., Cyprinus"
-            @input="updateFullName">
-          </el-input>
+            @input="updateFullName"
+          />
         </el-form-item>
 
         <el-form-item label="Species" prop="Species">
           <el-input
             v-model="speciesData.Species"
             placeholder="e.g., carpio"
-            @input="updateFullName">
-          </el-input>
+            @input="updateFullName"
+          />
         </el-form-item>
 
         <el-form-item label="Subspecies">
           <el-input
             v-model="speciesData.Subspecies"
             placeholder="Optional subspecies"
-            @input="updateFullName">
-          </el-input>
+            @input="updateFullName"
+          />
         </el-form-item>
 
         <el-form-item label="Remarks">
@@ -89,8 +92,8 @@
             v-model="speciesData.Remarks"
             type="textarea"
             :rows="3"
-            placeholder="Additional notes about this species">
-          </el-input>
+            placeholder="Additional notes about this species"
+          />
         </el-form-item>
       </el-card>
 
@@ -102,8 +105,8 @@
             v-model="speciesData.FullScientificName"
             placeholder="Full scientific name will be generated automatically"
             readonly
-            class="full-name-input">
-          </el-input>
+            class="full-name-input"
+          />
         </div>
       </el-card>
 
@@ -113,8 +116,9 @@
         <el-button @click="resetForm">Reset</el-button>
         <el-button
           type="primary"
+          :loading="submitting"
           @click="submitForm"
-          :loading="submitting">
+        >
           Create Species
         </el-button>
       </div>
@@ -123,8 +127,8 @@
 </template>
 
 <script>
-import _ from 'lodash';
-import { getFamily } from '@/api/table';
+import _ from 'lodash'
+import { getFamily } from '@/api/table'
 
 export default {
   name: 'CreateSpeciesForm',
@@ -181,82 +185,82 @@ export default {
   created() {
     // 如果有 verbatim 数据，预填充表单
     if (this.verbatimData) {
-      this.prefillFromVerbatim();
+      this.prefillFromVerbatim()
     }
   },
   methods: {
     // 从 verbatim 数据预填充表单
     prefillFromVerbatim() {
-      if (this.verbatimData.verbatimGenus) {
-        this.speciesData.Genus = this.capitalizeFirst(this.verbatimData.verbatimGenus);
+      if (this.verbatimData.genus) {
+        this.speciesData.Genus = this.capitalizeFirst(this.verbatimData.genus)
       }
-      if (this.verbatimData.verbatimSpecies) {
-        this.speciesData.Species = this.verbatimData.verbatimSpecies.toLowerCase();
+      if (this.verbatimData.species) {
+        this.speciesData.Species = this.verbatimData.species.toLowerCase()
       }
 
       // 更新全名
-      this.updateFullName();
+      this.updateFullName()
     },
 
     // 首字母大写
     capitalizeFirst(str) {
-      if (!str) return '';
-      return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+      if (!str) return ''
+      return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase()
     },
 
     // 更新全名
     updateFullName() {
-      let fullName = '';
+      let fullName = ''
 
       if (this.speciesData.Genus) {
-        fullName += this.speciesData.Genus;
+        fullName += this.speciesData.Genus
       }
 
       if (this.speciesData.Species) {
-        fullName += (fullName ? ' ' : '') + this.speciesData.Species;
+        fullName += (fullName ? ' ' : '') + this.speciesData.Species
       }
 
       if (this.speciesData.Subspecies) {
-        fullName += ' ' + this.speciesData.Subspecies;
+        fullName += ' ' + this.speciesData.Subspecies
       }
 
-      this.speciesData.FullScientificName = fullName;
+      this.speciesData.FullScientificName = fullName
     },
 
     // 远程搜索方法
     remoteMethod(searchKey, type) {
-      if (searchKey !== "") {
-        this.remoteLoading = true;
-        this.keyWord = searchKey;
-        this.getRemote(type);
+      if (searchKey !== '') {
+        this.remoteLoading = true
+        this.keyWord = searchKey
+        this.getRemote(type)
       } else {
-        this.familyOptions = [];
+        this.familyOptions = []
       }
     },
 
     // 防抖的远程搜索
     getRemote: _.debounce(function(type) {
       if (type === 'family') {
-        this.getFamilyList(this.queryParams);
+        this.getFamilyList(this.queryParams)
       }
     }, 300),
 
     // 获取 Family 列表
     async getFamilyList(params) {
       try {
-        const response = await getFamily(params);
-        this.familyOptions = [];
+        const response = await getFamily(params)
+        this.familyOptions = []
         response.data.items.forEach((item) => {
           this.familyOptions.push({
             FamilyName: item.FamilyName,
             FamilyID: item.FamilyID
-          });
-        });
-        this.remoteLoading = false;
+          })
+        })
+        this.remoteLoading = false
       } catch (error) {
-        console.error('Error fetching family data:', error);
-        this.$message.error('Failed to load family data');
-        this.remoteLoading = false;
+        console.error('Error fetching family data:', error)
+        this.$message.error('Failed to load family data')
+        this.remoteLoading = false
       }
     },
 
@@ -264,20 +268,20 @@ export default {
     async submitForm() {
       // 验证表单
       const valid = await new Promise(resolve => {
-        this.$refs.speciesForm.validate(resolve);
-      });
+        this.$refs.speciesForm.validate(resolve)
+      })
 
       if (!valid) {
-        this.$message.error('Please correct the form errors');
-        return;
+        this.$message.error('Please correct the form errors')
+        return
       }
 
       // 检查是否存在重复
       if (await this.checkDuplicateSpecies()) {
-        return;
+        return
       }
 
-      this.submitting = true;
+      this.submitting = true
       try {
         // 准备提交数据，映射到后端期望的格式
         const submitData = {
@@ -287,15 +291,15 @@ export default {
           remarks: this.speciesData.Remarks || null,
           fullScientificName: this.speciesData.FullScientificName,
           familyID: this.speciesData.familyID
-        };
+        }
 
         // 触发提交事件，传递格式化的数据
-        this.$emit('submit', submitData);
+        this.$emit('submit', submitData)
       } catch (error) {
-        this.$message.error('Failed to create species');
-        console.error(error);
+        this.$message.error('Failed to create species')
+        console.error(error)
       } finally {
-        this.submitting = false;
+        this.submitting = false
       }
     },
 
@@ -318,25 +322,25 @@ export default {
         //   return !result;
         // }
       } catch (error) {
-        console.error('Error checking for duplicate species:', error);
+        console.error('Error checking for duplicate species:', error)
       }
-      return false;
+      return false
     },
 
     // 重置表单
     resetForm() {
-      this.$refs.speciesForm.resetFields();
+      this.$refs.speciesForm.resetFields()
       if (this.verbatimData) {
-        this.prefillFromVerbatim();
+        this.prefillFromVerbatim()
       }
     },
 
     // 取消表单
     cancelForm() {
-      this.$emit('cancel');
+      this.$emit('cancel')
     }
   }
-};
+}
 </script>
 
 <style scoped>

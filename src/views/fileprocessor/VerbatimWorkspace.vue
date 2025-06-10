@@ -504,11 +504,27 @@ export default {
               inventory: record.record_data?.inventory || null,
               remarks: record.record_data?.remarks || null,
 
-              // Extract verbatim taxonomic data
+              // 保持原有的 verbatimTaxonomic 结构 - 重要：不要改动这部分！
               verbatimTaxonomic: record.verbatim_data?.taxonomic ? {
                 verbatimFamily: record.verbatim_data.taxonomic.family || '',
                 verbatimGenus: record.verbatim_data.taxonomic.genus || '',
                 verbatimSpecies: record.verbatim_data.taxonomic.species || ''
+              } : null,
+
+              // 新增：添加完整的verbatim locality数据
+              verbatimLocality: record.verbatim_data?.locality ? {
+                id: record.verbatim_data.locality.id,
+                locality_string: record.verbatim_data.locality.locality_string,
+                field_number: record.verbatim_data.locality.field_number,
+                drainage: record.verbatim_data.locality.drainage,
+                country: record.verbatim_data.locality.country,
+                state: record.verbatim_data.locality.state,
+                county: record.verbatim_data.locality.county,
+                waterbody: record.verbatim_data.locality.waterbody,
+                latitude: record.verbatim_data.locality.latitude,
+                longitude: record.verbatim_data.locality.longitude,
+                collect_date: record.verbatim_data.locality.collect_date,
+                collector: record.verbatim_data.locality.collector
               } : null,
 
               // Extract matched taxonomic data
@@ -521,7 +537,17 @@ export default {
                 Author: record.matched_data.taxonomic.author
               } : null,
 
-              // Extract match suggestions - 根据实际数据结构
+              // Extract matched locality data
+              locality: record.matched_data?.locality?.id ? {
+                Locality1ID: record.matched_data.locality.id,
+                LocalityString: record.matched_data.locality.locality,
+                FieldNo: record.matched_data.locality.field_number,
+                Country: record.matched_data.locality.country,
+                State: record.matched_data.locality.state,
+                County: record.matched_data.locality.county
+              } : null,
+
+              // Extract match suggestions - 保持原有结构
               matchSuggestions: record.match_suggestions?.taxonomic ? {
                 status: record.match_suggestions.taxonomic.status,
                 confidence: record.match_suggestions.taxonomic.confidence,
