@@ -1,6 +1,6 @@
 <!--
   RecordEditorDialog.vue
-  单条记录编辑对话框 - 修复版本
+  单条记录编辑对话框 - 支持完整验证状态
 -->
 <template>
   <el-dialog
@@ -168,17 +168,19 @@ export default {
   },
   computed: {
     hasSpeciesChanges() {
-      return this.localRecord.taxonId !== this.originalRecord.taxonId
+      return this.localRecord.taxonId !== this.originalRecord.taxonId ||
+        this.localRecord.speciesVerificationStatus !== this.originalRecord.speciesVerificationStatus
     },
 
     hasLocalityChanges() {
-      return this.localRecord.localityId !== this.originalRecord.localityId
+      return this.localRecord.localityId !== this.originalRecord.localityId ||
+        this.localRecord.localityVerificationStatus !== this.originalRecord.localityVerificationStatus
     },
 
     hasRecordChanges() {
       const recordFields = [
         'collectionDate', 'fieldNumber', 'totalNumber',
-        'storage', 'jarSize', 'prevNumber', 'inventory', 'remarks'
+        'storage', 'jarSize', 'prevNumber', 'inventory', 'remarks', 'recordVerificationStatus'
       ]
 
       return recordFields.some(field =>
@@ -221,25 +223,28 @@ export default {
           prevNumber: this.record.prevNumber,
           inventory: this.record.inventory,
           remarks: this.record.remarks,
+
           // 当前匹配的物种和地点信息
           taxonomic: this.record.taxonomic,
           locality: this.record.locality,
+
+          // 验证状态信息 - 从API数据中获取
+          speciesVerificationStatus: this.getInitialSpeciesStatus(),
+          localityVerificationStatus: this.getInitialLocalityStatus(),
+          recordVerificationStatus: this.getInitialRecordStatus(),
+
           processingStatus: this.record.processingStatus,
           _apiData: apiRecord
         }
 
-        // 修复：正确提取 verbatim 数据
-        // 从 API 返回的数据结构中提取
+        // 提取 verbatim 数据
         if (this.record._apiData && this.record._apiData.verbatim_data) {
-          // 新的API数据结构
           this.verbatimTaxonomic = this.record._apiData.verbatim_data.taxonomic
           this.verbatimLocality = this.record._apiData.verbatim_data.locality
         } else if (this.record.verbatimData) {
-          // 备选：如果数据在verbatimData中
           this.verbatimTaxonomic = this.record.verbatimData.taxonomic
           this.verbatimLocality = this.record.verbatimData.locality
         } else {
-          // 兼容旧格式
           this.verbatimTaxonomic = this.record.verbatimTaxonomic
           this.verbatimLocality = this.record.verbatimLocality
         }
@@ -250,12 +255,11 @@ export default {
         // 保存原始记录用于变更追踪
         this.originalRecord = { ...this.localRecord }
 
-        console.log('Record Editor Loaded:', {
+        console.log('Record Editor Loaded with verification status:', {
           localRecord: this.localRecord,
           verbatimTaxonomic: this.verbatimTaxonomic,
           verbatimLocality: this.verbatimLocality,
-          matchSuggestions: this.matchSuggestions,
-          originalRecord: this.record
+          matchSuggestions: this.matchSuggestions
         })
 
         this.hasLoaded = true
@@ -263,6 +267,25 @@ export default {
         this.$message.error('Failed to load record data')
         console.error(error)
       }
+    },
+
+    // 获取初始验证状态的辅助方法
+    getInitialSpeciesStatus() {
+      return this.record.verificationInfo?.species?.status ||
+        this.record.processingStatus?.taxonomic ||
+        (this.record.taxonId ? 'verified' : 'pending');
+    },
+
+    getInitialLocalityStatus() {
+      return this.record.verificationInfo?.locality?.status ||
+        this.record.processingStatus?.locality ||
+        (this.record.localityId ? 'verified' : 'pending');
+    },
+
+    getInitialRecordStatus() {
+      return this.record.verificationInfo?.record?.status ||
+        this.record.processingStatus?.record ||
+        'verified';
     },
 
     // 处理物种选择
@@ -276,6 +299,8 @@ export default {
         Species: taxon.Species,
         Author: taxon.Author
       }
+      // 自动设置species验证状态为verified
+      this.localRecord.speciesVerificationStatus = 'verified'
       this.$message.success(`Species matched: ${taxon.FullName}`)
     },
 
@@ -295,8 +320,35 @@ export default {
 
     // 处理地点选择
     handleLocalitySelected(locality) {
-      this.localRecord.localityId = locality.LocalityID
-      this.localRecord.locality = locality
+      console.log('Received locality data:', locality)
+
+      const localityId = locality.LocalityID || locality.Locality1ID
+
+      if (!localityId) {
+        console.error('No valid locality ID found in:', locality)
+        this.$message.error('Invalid locality data received')
+        return
+      }
+
+      this.localRecord.localityId = localityId
+      this.localRecord.locality = {
+        LocalityID: localityId,
+        Locality1ID: localityId,
+        LocalityString: locality.LocalityString,
+        FieldNo: locality.FieldNo,
+        Country: locality.Country,
+        State: locality.State,
+        County: locality.County,
+        Drainage: locality.Drainage,
+        WaterBody: locality.WaterBody,
+        Lat: locality.Lat,
+        Lon: locality.Lon
+      }
+
+      // 自动设置locality验证状态为verified
+      this.localRecord.localityVerificationStatus = 'verified'
+
+      console.log('Updated localRecord.localityId:', this.localRecord.localityId)
       this.$message.success(`Locality matched: ${locality.LocalityString}`)
     },
 
@@ -317,6 +369,7 @@ export default {
     // 处理记录字段更新
     handleRecordUpdated(updatedFields) {
       Object.assign(this.localRecord, updatedFields)
+      console.log('Record updated with fields:', updatedFields)
     },
 
     // 重置更改
@@ -332,6 +385,8 @@ export default {
         // 准备API更新数据
         const updateData = {
           id: this.localRecord.id,
+
+          // 基本字段更新
           taxon_id: this.localRecord.taxonId,
           locality_id: this.localRecord.localityId,
           collection_date: this.localRecord.collectionDate,
@@ -341,9 +396,15 @@ export default {
           prev_number: this.localRecord.prevNumber,
           inventory: this.localRecord.inventory,
           remarks: this.localRecord.remarks,
-          // 如果物种和地点都已匹配，取消审核标志
-          review_flag: !(this.localRecord.taxonId && this.localRecord.localityId)
+
+          // 验证状态更新 - 确保包含所有三个状态
+          species_verification_status: this.getSpeciesVerificationStatus(),
+          locality_verification_status: this.getLocalityVerificationStatus(),
+          record_verification_status: this.getRecordVerificationStatus(),
+          verification_notes: this.getVerificationNotes()
         }
+
+        console.log('Saving record with complete data:', updateData)
 
         // 发出保存事件给父组件
         this.$emit('save', updateData)
@@ -353,6 +414,65 @@ export default {
       } finally {
         this.saving = false
       }
+    },
+
+    // 获取各个tab的验证状态
+    getSpeciesVerificationStatus() {
+      // 优先使用用户在species tab中设置的状态
+      if (this.localRecord.speciesVerificationStatus) {
+        return this.localRecord.speciesVerificationStatus
+      }
+
+      // 否则基于数据状态判断
+      if (this.localRecord.taxonId) {
+        return 'verified'
+      } else if (this.localRecord.verbatimTaxonomicId) {
+        return 'needs_review'
+      }
+      return 'pending'
+    },
+
+    getLocalityVerificationStatus() {
+      // 优先使用用户在locality tab中设置的状态
+      if (this.localRecord.localityVerificationStatus) {
+        return this.localRecord.localityVerificationStatus
+      }
+
+      // 否则基于数据状态判断
+      if (this.localRecord.localityId) {
+        return 'verified'
+      } else if (this.localRecord.verbatimLocalityId) {
+        return 'needs_review'
+      }
+      return 'pending'
+    },
+
+    getRecordVerificationStatus() {
+      // 优先使用用户在record tab中设置的状态
+      if (this.localRecord.recordVerificationStatus) {
+        return this.localRecord.recordVerificationStatus
+      }
+
+      // 否则检查记录的基本信息是否完整
+      const hasBasicInfo = this.localRecord.totalNumber &&
+        this.localRecord.totalNumber > 0
+      return hasBasicInfo ? 'verified' : 'pending'
+    },
+
+    getVerificationNotes() {
+      const notes = []
+
+      if (this.hasSpeciesChanges) {
+        notes.push('Species information updated')
+      }
+      if (this.hasLocalityChanges) {
+        notes.push('Locality information updated')
+      }
+      if (this.hasRecordChanges) {
+        notes.push('Record details updated')
+      }
+
+      return notes.join('; ')
     },
 
     // 处理关闭

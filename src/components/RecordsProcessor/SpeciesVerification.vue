@@ -218,6 +218,7 @@
       title="Create New Species"
       :visible.sync="showCreateDialog"
       width="500px"
+      :append-to-body="true"
     >
 
       <create-species-form

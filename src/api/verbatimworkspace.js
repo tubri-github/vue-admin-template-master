@@ -31,14 +31,14 @@ export function getBatchRecords(batchSerialId, params = {}) {
 }
 export function markBatchCompleted(batchSerialId) {
   return request({
-    url: `/api/verbatim/batches/${batchSerialId}/complete`,
+    url: api_prefix + `/batches/${batchSerialId}/complete`,
     method: 'post'
   });
 }
 
 export function exportBatchResults(batchSerialId) {
   return request({
-    url: `/api/verbatim/batches/${batchSerialId}/export`,
+    url: api_prefix + `/batches/${batchSerialId}/export`,
     method: 'get',
     responseType: 'blob'
   });
@@ -128,10 +128,10 @@ export function createLocality(localityData) {
 // 记录更新相关 API
 export function updateVerbatimRecord(recordData) {
   return request({
-    url: `/api/verbatim/records/${recordData.id}`,
+    url: api_prefix + `/records/${recordData.id}`,
     method: 'put',
     data: recordData
-  });
+  })
 }
 
 export function updateRecordDetails(recordData) {
@@ -142,25 +142,25 @@ export function updateRecordDetails(recordData) {
   });
 }
 
-export function generateFieldNumber() {
-  return request({
-    url: '/api/primary/generate-field-number',
-    method: 'post'
-  });
-}
 
 // 统计和报告 API
 export function getBatchProgress(batchSerialId) {
   return request({
-    url: `/api/verbatim/batches/${batchSerialId}/progress`,
+    url: api_prefix + `/batches/${batchSerialId}/progress`,
     method: 'get'
   });
 }
 
 export function getVerbatimStatistics(params = {}) {
   return request({
-    url: '/api/verbatim/statistics',
+    url: '/api/batch/statistics',
     method: 'get',
     params
   });
+}
+export function applyTaxonomicSuggestion(record_id) {
+  return request({
+    url: api_prefix + `/records/${record_id}/apply-suggestion `,
+    method: 'get',
+  })
 }

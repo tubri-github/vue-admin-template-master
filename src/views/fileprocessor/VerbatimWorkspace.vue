@@ -1,6 +1,7 @@
 <!--
   VerbatimWorkspace.vue
   Verbatim 数据处理工作台 - 批次数据验证和编辑 (服务器端分页版本)
+  支持完整的三阶段验证：物种验证、地点验证、记录详情验证
 -->
 <template>
   <div class="verbatim-workspace">
@@ -72,15 +73,15 @@
         </div>
 
         <el-row :gutter="20">
-          <el-col :span="6">
+          <el-col :span="4">
             <div class="progress-item">
               <div class="progress-number">{{progressStats.total}}</div>
               <div class="progress-label">Total Records</div>
             </div>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="5">
             <div class="progress-item">
-              <div class="progress-number species">{{progressStats.speciesCompleted}}</div>
+              <div class="progress-number species">{{progressStats.speciesVerified}}</div>
               <div class="progress-label">Species Verified</div>
               <div class="progress-bar">
                 <el-progress
@@ -91,9 +92,9 @@
               </div>
             </div>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="5">
             <div class="progress-item">
-              <div class="progress-number locality">{{progressStats.localityCompleted}}</div>
+              <div class="progress-number locality">{{progressStats.localityVerified}}</div>
               <div class="progress-label">Locality Verified</div>
               <div class="progress-bar">
                 <el-progress
@@ -104,7 +105,20 @@
               </div>
             </div>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="5">
+            <div class="progress-item">
+              <div class="progress-number record">{{progressStats.recordVerified}}</div>
+              <div class="progress-label">Record Verified</div>
+              <div class="progress-bar">
+                <el-progress
+                  :percentage="progressStats.recordPercentage"
+                  :stroke-width="8"
+                  color="#E6A23C">
+                </el-progress>
+              </div>
+            </div>
+          </el-col>
+          <el-col :span="5">
             <div class="progress-item">
               <div class="progress-number complete">{{progressStats.fullyCompleted}}</div>
               <div class="progress-label">Fully Completed</div>
@@ -112,7 +126,7 @@
                 <el-progress
                   :percentage="progressStats.completionPercentage"
                   :stroke-width="8"
-                  color="#E6A23C">
+                  color="#F56C6C">
                 </el-progress>
               </div>
             </div>
@@ -140,6 +154,12 @@
               </el-button>
               <el-button
                 size="small"
+                :type="serverSideFilter === 'needs_review' ? 'warning' : ''"
+                @click="setFilter('needs_review')">
+                Needs Review ({{needsReviewCount}})
+              </el-button>
+              <el-button
+                size="small"
                 :type="serverSideFilter === 'completed' ? 'success' : ''"
                 @click="setFilter('completed')">
                 Completed ({{completedCount}})
@@ -162,6 +182,17 @@
               </el-input>
             </el-col>
             <el-col :span="12" class="text-right">
+              <el-dropdown @command="handleBatchAction" style="margin-right: 10px;">
+                <el-button>
+                  Batch Actions <i class="el-icon-arrow-down el-icon--right"></i>
+                </el-button>
+                <el-dropdown-menu slot="dropdown">
+                  <el-dropdown-item command="verify-completed">Verify All Completed</el-dropdown-item>
+                  <el-dropdown-item command="verify-species">Verify All Species</el-dropdown-item>
+                  <el-dropdown-item command="verify-locality">Verify All Locality</el-dropdown-item>
+                  <el-dropdown-item divided command="mark-review">Mark Selected for Review</el-dropdown-item>
+                </el-dropdown-menu>
+              </el-dropdown>
               <el-button @click="exportBatchResults">
                 <i class="el-icon-download"></i>
                 Export Results
@@ -176,10 +207,17 @@
 
         <!-- 记录表格 -->
         <el-table
+          ref="recordsTable"
           :data="batchRecords"
           v-loading="loadingRecords"
           stripe
-          @row-click="editRecord">
+          @row-click="editRecord"
+          @selection-change="handleSelectionChange">
+
+          <el-table-column
+            type="selection"
+            width="55">
+          </el-table-column>
 
           <el-table-column prop="catalogNumber" label="Catalog #" width="120">
             <template slot-scope="scope">
@@ -193,21 +231,29 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="Species Status" width="150">
+          <el-table-column label="Species Status" width="180">
             <template slot-scope="scope">
-              <el-tag
-                :type="getSpeciesStatusType(scope.row)"
-                size="small">
-                <i :class="getSpeciesStatusIcon(scope.row)"></i>
-                {{getSpeciesStatusText(scope.row)}}
-              </el-tag>
-              <!-- 显示匹配建议信息 -->
-              <div v-if="scope.row.matchSuggestions" class="suggestion-info">
-                <el-tooltip :content="getMatchTooltip(scope.row.matchSuggestions)" placement="top">
-                  <el-tag size="mini" :type="getMatchSuggestionType(scope.row.matchSuggestions)">
-                    {{scope.row.matchSuggestions.status}} ({{scope.row.matchSuggestions.confidence}}%)
-                  </el-tag>
-                </el-tooltip>
+              <div class="status-column">
+                <el-tag
+                  :type="getSpeciesStatusType(scope.row)"
+                  size="small">
+                  <i :class="getSpeciesStatusIcon(scope.row)"></i>
+                  {{getSpeciesStatusText(scope.row)}}
+                </el-tag>
+                <!-- 显示匹配建议信息 -->
+                <div v-if="scope.row.matchSuggestions && scope.row.matchSuggestions.hasSuggestion" class="suggestion-info">
+                  <el-tooltip :content="getMatchTooltip(scope.row.matchSuggestions)" placement="top">
+                    <el-tag size="mini" :type="getMatchSuggestionType(scope.row.matchSuggestions)">
+                      {{scope.row.matchSuggestions.status}} ({{scope.row.matchSuggestions.confidence}}%)
+                    </el-tag>
+                  </el-tooltip>
+                </div>
+                <!-- 显示验证者信息 -->
+                <div v-if="scope.row.verificationInfo && scope.row.verificationInfo.species.verified_by_name" class="verification-info">
+                  <el-tooltip :content="`Verified by ${scope.row.verificationInfo.species.verified_by_name} at ${formatDateTime(scope.row.verificationInfo.species.verified_at)}`" placement="top">
+                    <i class="el-icon-user verification-icon"></i>
+                  </el-tooltip>
+                </div>
               </div>
             </template>
           </el-table-column>
@@ -255,13 +301,51 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="Locality Status" width="150">
+          <el-table-column label="Locality Status" width="180">
+            <template slot-scope="scope">
+              <div class="status-column">
+                <el-tag
+                  :type="getLocalityStatusType(scope.row)"
+                  size="small">
+                  <i :class="getLocalityStatusIcon(scope.row)"></i>
+                  {{getLocalityStatusText(scope.row)}}
+                </el-tag>
+                <!-- 显示验证者信息 -->
+                <div v-if="scope.row.verificationInfo && scope.row.verificationInfo.locality.verified_by_name" class="verification-info">
+                  <el-tooltip :content="`Verified by ${scope.row.verificationInfo.locality.verified_by_name} at ${formatDateTime(scope.row.verificationInfo.locality.verified_at)}`" placement="top">
+                    <i class="el-icon-user verification-icon"></i>
+                  </el-tooltip>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="Record Status" width="150">
+            <template slot-scope="scope">
+              <div class="status-column">
+                <el-tag
+                  :type="getRecordStatusType(scope.row)"
+                  size="small">
+                  <i :class="getRecordStatusIcon(scope.row)"></i>
+                  {{getRecordStatusText(scope.row)}}
+                </el-tag>
+                <!-- 显示验证者信息 -->
+                <div v-if="scope.row.verificationInfo && scope.row.verificationInfo.record.verified_by_name" class="verification-info">
+                  <el-tooltip :content="`Verified by ${scope.row.verificationInfo.record.verified_by_name} at ${formatDateTime(scope.row.verificationInfo.record.verified_at)}`" placement="top">
+                    <i class="el-icon-user verification-icon"></i>
+                  </el-tooltip>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="Overall Status" width="150">
             <template slot-scope="scope">
               <el-tag
-                :type="getLocalityStatusType(scope.row)"
+                :type="getOverallStatusType(scope.row)"
                 size="small">
-                <i :class="getLocalityStatusIcon(scope.row)"></i>
-                {{getLocalityStatusText(scope.row)}}
+                <i :class="getOverallStatusIcon(scope.row)"></i>
+                {{getOverallStatusText(scope.row)}}
               </el-tag>
             </template>
           </el-table-column>
@@ -314,6 +398,24 @@
       @close="closeRecordEditor"
       @save="handleRecordSave"
     />
+
+    <!-- 批量操作确认对话框 -->
+    <el-dialog
+      title="Batch Operation Confirmation"
+      :visible.sync="showBatchConfirmDialog"
+      width="500px">
+      <div class="batch-confirm-content">
+        <p>Are you sure you want to <strong>{{batchActionText}}</strong> for {{selectedRecords.length}} selected records?</p>
+        <div v-if="batchActionType === 'verify-completed'" class="warning-text">
+          <i class="el-icon-warning"></i>
+          This will mark all selected records as fully verified if they have both species and locality matched.
+        </div>
+      </div>
+      <div slot="footer" class="dialog-footer">
+        <el-button @click="showBatchConfirmDialog = false">Cancel</el-button>
+        <el-button type="primary" @click="confirmBatchAction" :loading="performingBatchAction">Confirm</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -326,7 +428,8 @@ import {
   updateVerbatimRecord,
   exportBatchResults,
   markBatchCompleted,
-  applyTaxonomicSuggestion
+  applyTaxonomicSuggestion,
+  batchUpdateVerificationStatus
 } from '@/api/verbatimworkspace'
 
 export default {
@@ -345,7 +448,7 @@ export default {
       // 记录数据
       batchRecords: [],
       loadingRecords: false,
-      totalRecords: 0, // 服务器端总记录数
+      totalRecords: 0,
 
       // 服务器端过滤和搜索
       serverSideFilter: 'all',
@@ -358,17 +461,27 @@ export default {
       // 进度统计
       progressStats: {
         total: 0,
-        speciesCompleted: 0,
-        localityCompleted: 0,
+        speciesVerified: 0,
+        localityVerified: 0,
+        recordVerified: 0,
         fullyCompleted: 0,
         speciesPercentage: 0,
         localityPercentage: 0,
-        completionPercentage: 0
+        recordPercentage: 0,
+        completionPercentage: 0,
+        needsReview: 0
       },
 
       // 编辑对话框
       showRecordEditor: false,
-      editingRecord: null
+      editingRecord: null,
+
+      // 批量操作
+      selectedRecords: [],
+      showBatchConfirmDialog: false,
+      batchActionType: '',
+      batchActionText: '',
+      performingBatchAction: false
     }
   },
   computed: {
@@ -378,6 +491,10 @@ export default {
 
     completedCount() {
       return this.progressStats.fullyCompleted;
+    },
+
+    needsReviewCount() {
+      return this.progressStats.needsReview || 0;
     }
   },
   async mounted() {
@@ -456,7 +573,7 @@ export default {
       }
     },
 
-    // 加载批次记录 - 支持分页和过滤
+    // 加载批次记录
     async loadBatchRecords() {
       if (!this.selectedBatchId) {
         this.batchRecords = [];
@@ -475,28 +592,16 @@ export default {
 
         if (recordsResponse.code === 20000) {
           this.totalRecords = recordsResponse.data.total;
-          // Map the records to match component's expected format
           this.batchRecords = recordsResponse.data.items.map(record => {
             return {
-              // Keep basic ID and catalog number
               id: record.id,
               catalogNumber: record.catalog_number,
-
-              // Extract taxonomic information
               taxonId: record.matched_data?.taxonomic?.id || null,
               verbatimTaxonomicId: record.verbatim_data?.taxonomic?.id || null,
-
-              // Extract locality information
               localityId: record.matched_data?.locality?.id || null,
               verbatimLocalityId: record.verbatim_data?.locality?.id || null,
-
-              // Extract field number
               fieldNumber: record.verbatim_data?.locality?.field_number || null,
-
-              // Extract collection date
               collectionDate: record.matched_data?.locality?.collection_date || null,
-
-              // Extract record data
               totalNumber: record.record_data?.total_number || 1,
               storage: record.record_data?.storage || null,
               jarSize: record.record_data?.jar_size || null,
@@ -504,14 +609,12 @@ export default {
               inventory: record.record_data?.inventory || null,
               remarks: record.record_data?.remarks || null,
 
-              // 保持原有的 verbatimTaxonomic 结构 - 重要：不要改动这部分！
               verbatimTaxonomic: record.verbatim_data?.taxonomic ? {
                 verbatimFamily: record.verbatim_data.taxonomic.family || '',
                 verbatimGenus: record.verbatim_data.taxonomic.genus || '',
                 verbatimSpecies: record.verbatim_data.taxonomic.species || ''
               } : null,
 
-              // 新增：添加完整的verbatim locality数据
               verbatimLocality: record.verbatim_data?.locality ? {
                 id: record.verbatim_data.locality.id,
                 locality_string: record.verbatim_data.locality.locality_string,
@@ -527,7 +630,6 @@ export default {
                 collector: record.verbatim_data.locality.collector
               } : null,
 
-              // Extract matched taxonomic data
               taxonomic: record.matched_data?.taxonomic?.id ? {
                 FullName: `${record.matched_data.taxonomic.genus || ''} ${record.matched_data.taxonomic.species || ''}`.trim(),
                 TaxonID: record.matched_data.taxonomic.id,
@@ -537,7 +639,6 @@ export default {
                 Author: record.matched_data.taxonomic.author
               } : null,
 
-              // Extract matched locality data
               locality: record.matched_data?.locality?.id ? {
                 Locality1ID: record.matched_data.locality.id,
                 LocalityString: record.matched_data.locality.locality,
@@ -547,7 +648,6 @@ export default {
                 County: record.matched_data.locality.county
               } : null,
 
-              // Extract match suggestions - 保持原有结构
               matchSuggestions: record.match_suggestions?.taxonomic ? {
                 status: record.match_suggestions.taxonomic.status,
                 confidence: record.match_suggestions.taxonomic.confidence,
@@ -558,7 +658,6 @@ export default {
                 suggested_data: record.match_suggestions.taxonomic.suggested_data
               } : null,
 
-              // 为了向后兼容，保留 suggestedTaxonomic 字段
               suggestedTaxonomic: record.match_suggestions?.taxonomic?.suggested_data ? {
                 FullName: record.match_suggestions.taxonomic.suggested_data.full_name ||
                   `${record.match_suggestions.taxonomic.suggested_data.genus || ''} ${record.match_suggestions.taxonomic.suggested_data.species || ''}`.trim(),
@@ -569,14 +668,12 @@ export default {
                 Author: record.match_suggestions.taxonomic.suggested_data.author
               } : null,
 
-              // Save the processing status
+              verificationInfo: record.verification_info || null,
               processingStatus: record.processing_status,
-
-              // Store the original API record for reference
               _apiData: record
             };
           });
-          // Update progress from API response if available
+
           if (recordsResponse.data.progress) {
             this.updateProgressFromAPI(recordsResponse.data.progress);
           }
@@ -593,12 +690,15 @@ export default {
     updateProgressFromAPI(progress) {
       this.progressStats = {
         total: this.currentBatch?.recordCount || progress.taxonomic?.total || 0,
-        speciesCompleted: progress.taxonomic?.processed || 0,
-        localityCompleted: progress.locality?.processed || 0,
-        fullyCompleted: progress.overall?.processed || 0,
+        speciesVerified: progress.taxonomic?.verified || 0,
+        localityVerified: progress.locality?.verified || 0,
+        recordVerified: progress.record?.verified || 0,
+        fullyCompleted: progress.overall?.completed || 0,
         speciesPercentage: progress.taxonomic?.percent || 0,
         localityPercentage: progress.locality?.percent || 0,
-        completionPercentage: progress.overall?.percent || 0
+        recordPercentage: progress.record?.percent || 0,
+        completionPercentage: progress.overall?.percent || 0,
+        needsReview: progress.needs_review?.count || 0
       };
     },
 
@@ -606,12 +706,15 @@ export default {
       if (progress) {
         this.progressStats = {
           total: progress.taxonomic?.total || 0,
-          speciesCompleted: progress.taxonomic?.processed || 0,
-          localityCompleted: progress.locality?.processed || 0,
-          fullyCompleted: progress.overall?.processed || 0,
+          speciesVerified: progress.taxonomic?.verified || 0,
+          localityVerified: progress.locality?.verified || 0,
+          recordVerified: progress.record?.verified || 0,
+          fullyCompleted: progress.overall?.completed || 0,
           speciesPercentage: progress.taxonomic?.percent || 0,
           localityPercentage: progress.locality?.percent || 0,
-          completionPercentage: progress.overall?.percent || 0
+          recordPercentage: progress.record?.percent || 0,
+          completionPercentage: progress.overall?.percent || 0,
+          needsReview: progress.needs_review?.count || 0
         };
       }
     },
@@ -621,21 +724,21 @@ export default {
       await this.loadBatchData();
     },
 
-    // 设置过滤状态 - 需要调用服务器
+    // 设置过滤状态
     async setFilter(status) {
       this.serverSideFilter = status;
       this.currentPage = 1;
       await this.loadBatchRecords();
     },
 
-    // 搜索处理 - 添加防抖
+    // 搜索处理
     onSearchChange() {
       clearTimeout(this.searchTimeout);
       this.searchTimeout = setTimeout(async () => {
         this.serverSideSearch = this.searchText;
         this.currentPage = 1;
         await this.loadBatchRecords();
-      }, 500); // 500ms 防抖
+      }, 500);
     },
 
     onSearchClear() {
@@ -645,7 +748,7 @@ export default {
       this.loadBatchRecords();
     },
 
-    // 分页处理 - 需要调用服务器
+    // 分页处理
     async handlePageChange(page) {
       this.currentPage = page;
       await this.loadBatchRecords();
@@ -657,42 +760,155 @@ export default {
       await this.loadBatchRecords();
     },
 
-    // 获取物种状态
+    // 获取物种验证状态
+    getSpeciesVerificationStatus(record) {
+      return record.verificationInfo?.species?.status ||
+        record.processingStatus?.taxonomic ||
+        (record.taxonId ? 'verified' : 'pending');
+    },
+
     getSpeciesStatusType(record) {
-      if (record.taxonId) return 'success';
-      if (record.verbatimTaxonomicId) return 'warning';
-      return 'info';
+      const status = this.getSpeciesVerificationStatus(record);
+      switch(status) {
+        case 'verified': return 'success';
+        case 'needs_review': return 'warning';
+        case 'rejected': return 'danger';
+        default: return 'info';
+      }
     },
 
     getSpeciesStatusIcon(record) {
-      if (record.taxonId) return 'el-icon-check';
-      if (record.verbatimTaxonomicId) return 'el-icon-warning';
-      return 'el-icon-minus';
+      const status = this.getSpeciesVerificationStatus(record);
+      switch(status) {
+        case 'verified': return 'el-icon-check';
+        case 'needs_review': return 'el-icon-warning';
+        case 'rejected': return 'el-icon-close';
+        default: return 'el-icon-minus';
+      }
     },
 
     getSpeciesStatusText(record) {
-      if (record.taxonId) return 'Verified';
-      if (record.verbatimTaxonomicId) return 'Pending';
-      return 'None';
+      const status = this.getSpeciesVerificationStatus(record);
+      switch(status) {
+        case 'verified': return 'Verified';
+        case 'needs_review': return 'Needs Review';
+        case 'rejected': return 'Rejected';
+        default: return 'Pending';
+      }
     },
 
-    // 获取地点状态
+    // 获取地点验证状态
+    getLocalityVerificationStatus(record) {
+      return record.verificationInfo?.locality?.status ||
+        record.processingStatus?.locality ||
+        (record.localityId ? 'verified' : 'pending');
+    },
+
     getLocalityStatusType(record) {
-      if (record.localityId) return 'success';
-      if (record.verbatimLocalityId) return 'warning';
-      return 'info';
+      const status = this.getLocalityVerificationStatus(record);
+      switch(status) {
+        case 'verified': return 'success';
+        case 'needs_review': return 'warning';
+        case 'rejected': return 'danger';
+        default: return 'info';
+      }
     },
 
     getLocalityStatusIcon(record) {
-      if (record.localityId) return 'el-icon-check';
-      if (record.verbatimLocalityId) return 'el-icon-warning';
-      return 'el-icon-minus';
+      const status = this.getLocalityVerificationStatus(record);
+      switch(status) {
+        case 'verified': return 'el-icon-check';
+        case 'needs_review': return 'el-icon-warning';
+        case 'rejected': return 'el-icon-close';
+        default: return 'el-icon-minus';
+      }
     },
 
     getLocalityStatusText(record) {
-      if (record.localityId) return 'Verified';
-      if (record.verbatimLocalityId) return 'Pending';
-      return 'None';
+      const status = this.getLocalityVerificationStatus(record);
+      switch(status) {
+        case 'verified': return 'Verified';
+        case 'needs_review': return 'Needs Review';
+        case 'rejected': return 'Rejected';
+        default: return 'Pending';
+      }
+    },
+
+    // 获取记录验证状态
+    getRecordVerificationStatus(record) {
+      return record.verificationInfo?.record?.status ||
+        record.processingStatus?.record ||
+        'pending';
+    },
+
+    getRecordStatusType(record) {
+      const status = this.getRecordVerificationStatus(record);
+      switch(status) {
+        case 'verified': return 'success';
+        case 'needs_review': return 'warning';
+        case 'rejected': return 'danger';
+        default: return 'info';
+      }
+    },
+
+    getRecordStatusIcon(record) {
+      const status = this.getRecordVerificationStatus(record);
+      switch(status) {
+        case 'verified': return 'el-icon-check';
+        case 'needs_review': return 'el-icon-warning';
+        case 'rejected': return 'el-icon-close';
+        default: return 'el-icon-minus';
+      }
+    },
+
+    getRecordStatusText(record) {
+      const status = this.getRecordVerificationStatus(record);
+      switch(status) {
+        case 'verified': return 'Verified';
+        case 'needs_review': return 'Needs Review';
+        case 'rejected': return 'Rejected';
+        default: return 'Pending';
+      }
+    },
+
+    // 获取整体验证状态
+    getOverallVerificationStatus(record) {
+      return record.verificationInfo?.overall?.status ||
+        record.processingStatus?.overall ||
+        'pending';
+    },
+
+    getOverallStatusType(record) {
+      const status = this.getOverallVerificationStatus(record);
+      switch(status) {
+        case 'completed': return 'success';
+        case 'verified': return 'success';
+        case 'needs_review': return 'warning';
+        case 'rejected': return 'danger';
+        default: return 'info';
+      }
+    },
+
+    getOverallStatusIcon(record) {
+      const status = this.getOverallVerificationStatus(record);
+      switch(status) {
+        case 'completed': return 'el-icon-check';
+        case 'verified': return 'el-icon-check';
+        case 'needs_review': return 'el-icon-warning';
+        case 'rejected': return 'el-icon-close';
+        default: return 'el-icon-minus';
+      }
+    },
+
+    getOverallStatusText(record) {
+      const status = this.getOverallVerificationStatus(record);
+      switch(status) {
+        case 'completed': return 'Completed';
+        case 'verified': return 'Verified';
+        case 'needs_review': return 'Needs Review';
+        case 'rejected': return 'Rejected';
+        default: return 'Pending';
+      }
     },
 
     // 获取匹配建议相关信息
@@ -727,7 +943,7 @@ export default {
         const response = await applyTaxonomicSuggestion(record.id);
         if (response.code === 20000) {
           this.$message.success('Taxonomic suggestion applied successfully');
-          await this.loadBatchRecords(); // 重新加载当前页数据
+          await this.loadBatchRecords();
         }
       } catch (error) {
         this.$message.error('Failed to apply taxonomic suggestion');
@@ -755,11 +971,101 @@ export default {
         if (response.code === 20000) {
           this.$message.success('Record updated successfully');
           this.closeRecordEditor();
-          await this.loadBatchRecords(); // 重新加载当前页数据
+          await this.loadBatchRecords();
         }
       } catch (error) {
         this.$message.error('Failed to update record');
         console.error(error);
+      }
+    },
+
+    // 处理表格选择变化
+    handleSelectionChange(selection) {
+      this.selectedRecords = selection;
+    },
+
+    // 处理批量操作
+    handleBatchAction(command) {
+      if (this.selectedRecords.length === 0) {
+        this.$message.warning('Please select records first');
+        return;
+      }
+
+      this.batchActionType = command;
+
+      switch(command) {
+        case 'verify-completed':
+          this.batchActionText = 'verify as completed';
+          break;
+        case 'verify-species':
+          this.batchActionText = 'verify species information';
+          break;
+        case 'verify-locality':
+          this.batchActionText = 'verify locality information';
+          break;
+        case 'mark-review':
+          this.batchActionText = 'mark for review';
+          break;
+        default:
+          this.batchActionText = 'perform batch operation';
+      }
+
+      this.showBatchConfirmDialog = true;
+    },
+
+    // 确认批量操作
+    async confirmBatchAction() {
+      this.performingBatchAction = true;
+
+      try {
+        const recordIds = this.selectedRecords.map(record => record.id);
+        let verificationType = 'all';
+        let status = 'verified';
+
+        switch(this.batchActionType) {
+          case 'verify-completed':
+            const completedRecords = this.selectedRecords.filter(record =>
+              record.taxonId && record.localityId
+            );
+            if (completedRecords.length === 0) {
+              this.$message.warning('No completed records found in selection');
+              return;
+            }
+            verificationType = 'all';
+            status = 'verified';
+            break;
+          case 'verify-species':
+            verificationType = 'species';
+            status = 'verified';
+            break;
+          case 'verify-locality':
+            verificationType = 'locality';
+            status = 'verified';
+            break;
+          case 'mark-review':
+            verificationType = 'all';
+            status = 'needs_review';
+            break;
+        }
+
+        const response = await batchUpdateVerificationStatus({
+          record_ids: recordIds,
+          verification_type: verificationType,
+          status: status,
+          notes: `Batch ${this.batchActionText} operation`
+        });
+
+        if (response.code === 20000) {
+          this.$message.success(`Batch operation completed for ${response.data.updated_count} records`);
+          await this.loadBatchRecords();
+          this.$refs.recordsTable.clearSelection();
+        }
+      } catch (error) {
+        this.$message.error('Batch operation failed');
+        console.error(error);
+      } finally {
+        this.performingBatchAction = false;
+        this.showBatchConfirmDialog = false;
       }
     },
 
@@ -768,7 +1074,6 @@ export default {
       try {
         const response = await exportBatchResults(this.selectedBatchId);
 
-        // 创建下载链接
         const blob = new Blob([response], {
           type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         });
@@ -813,6 +1118,12 @@ export default {
     formatDate(date) {
       if (!date) return '';
       return new Date(date).toLocaleDateString();
+    },
+
+    // 格式化日期时间
+    formatDateTime(datetime) {
+      if (!datetime) return '';
+      return new Date(datetime).toLocaleString();
     }
   }
 };
@@ -872,8 +1183,12 @@ export default {
   color: #409EFF;
 }
 
-.progress-number.complete {
+.progress-number.record {
   color: #E6A23C;
+}
+
+.progress-number.complete {
+  color: #F56C6C;
 }
 
 .progress-label {
@@ -892,6 +1207,113 @@ export default {
 
 .table-toolbar {
   margin-bottom: 20px;
-  padding: 15px
+  padding: 15px;
+}
+
+.status-column {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.suggestion-info {
+  margin-top: 4px;
+}
+
+.verification-info {
+  margin-top: 4px;
+}
+
+.verification-icon {
+  color: #67C23A;
+  font-size: 12px;
+}
+
+.verbatim-text {
+  font-style: italic;
+  color: #666;
+}
+
+.matched-text {
+  font-weight: 500;
+  color: #333;
+}
+
+.suggested-text {
+  color: #409EFF;
+  font-style: italic;
+}
+
+.text-gray-400 {
+  color: #9CA3AF;
+}
+
+.text-xs {
+  font-size: 12px;
+}
+
+.text-gray-500 {
+  color: #6B7280;
+}
+
+.pagination-wrapper {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.batch-confirm-content {
+  padding: 20px 0;
+}
+
+.warning-text {
+  margin-top: 15px;
+  padding: 10px;
+  background: #fdf6ec;
+  border: 1px solid #fbbf24;
+  border-radius: 4px;
+  color: #92400e;
+  font-size: 14px;
+}
+
+.warning-text i {
+  margin-right: 8px;
+}
+
+.catalog-number {
+  font-weight: 500;
+  color: #1f2937;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .verbatim-workspace {
+    max-width: 100%;
+    padding: 10px;
+  }
+
+  .progress-item {
+    padding: 15px 10px;
+  }
+
+  .progress-number {
+    font-size: 1.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .batch-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .table-toolbar .el-row {
+    flex-direction: column;
+  }
+
+  .table-toolbar .el-col {
+    width: 100% !important;
+    margin-bottom: 10px;
+  }
 }
 </style>
