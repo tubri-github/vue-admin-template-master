@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 
-const api_prefix = '/api/batch/'
+const api_prefix = '/batch/'
 // 批次管理相关 API
 export function getVerbatimBatches(data) {
   return request({
@@ -47,14 +47,14 @@ export function exportBatchResults(batchSerialId) {
 // Verbatim 数据获取 API
 export function getVerbatimTaxonomic(verbatimTaxonomicId) {
   return request({
-    url: `/api/verbatim/taxonomic/${verbatimTaxonomicId}`,
+    url: `/verbatim/taxonomic/${verbatimTaxonomicId}`,
     method: 'get'
   });
 }
 
 export function getVerbatimLocality(verbatimLocalityId) {
   return request({
-    url: `/api/verbatim/locality/${verbatimLocalityId}`,
+    url: `/verbatim/locality/${verbatimLocalityId}`,
     method: 'get'
   });
 }
@@ -62,7 +62,7 @@ export function getVerbatimLocality(verbatimLocalityId) {
 // 物种验证相关 API
 export function searchTaxonomic(params) {
   return request({
-    url: '/api/taxonomic/search',
+    url: '/taxonomic/search',
     method: 'get',
     params
   });
@@ -70,7 +70,7 @@ export function searchTaxonomic(params) {
 
 export function autoMatchSpecies(verbatimData) {
   return request({
-    url: '/api/taxonomic/auto-match',
+    url: '/taxonomic/auto-match',
     method: 'post',
     data: verbatimData
   });
@@ -78,7 +78,7 @@ export function autoMatchSpecies(verbatimData) {
 
 export function createTaxonomic(taxonomicData) {
   return request({
-    url: '/api/taxonomic',
+    url: '/taxonomic',
     method: 'post',
     data: taxonomicData
   });
@@ -87,7 +87,7 @@ export function createTaxonomic(taxonomicData) {
 // 地点验证相关 API
 export function searchLocality(params) {
   return request({
-    url: '/api/locality/search',
+    url: '/locality/search',
     method: 'get',
     params
   });
@@ -95,7 +95,7 @@ export function searchLocality(params) {
 
 export function searchLocalityAdvanced(searchData) {
   return request({
-    url: '/api/locality/search/advanced',
+    url: '/locality/search/advanced',
     method: 'post',
     data: searchData
   });
@@ -103,7 +103,7 @@ export function searchLocalityAdvanced(searchData) {
 
 export function searchLocalityByCoordinates(coordinateData) {
   return request({
-    url: '/api/locality/search/coordinates',
+    url: '/locality/search/coordinates',
     method: 'post',
     data: coordinateData
   });
@@ -111,7 +111,7 @@ export function searchLocalityByCoordinates(coordinateData) {
 
 export function autoMatchLocality(verbatimData) {
   return request({
-    url: '/api/locality/auto-match',
+    url: '/locality/auto-match',
     method: 'post',
     data: verbatimData
   });
@@ -119,7 +119,7 @@ export function autoMatchLocality(verbatimData) {
 
 export function createLocality(localityData) {
   return request({
-    url: '/api/locality',
+    url: '/locality',
     method: 'post',
     data: localityData
   });
@@ -136,7 +136,7 @@ export function updateVerbatimRecord(recordData) {
 
 export function updateRecordDetails(recordData) {
   return request({
-    url: `/api/primary/records/${recordData.id}`,
+    url: `/primary/records/${recordData.id}`,
     method: 'put',
     data: recordData
   });
@@ -153,7 +153,7 @@ export function getBatchProgress(batchSerialId) {
 
 export function getVerbatimStatistics(params = {}) {
   return request({
-    url: '/api/batch/statistics',
+    url: '/batch/statistics',
     method: 'get',
     params
   });

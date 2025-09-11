@@ -38,6 +38,15 @@ export const constantRoutes = [
   },
 
   {
+    path: '/auth/callback',
+    component: () => import('@/views/auth/callback'),
+    hidden: true,
+    meta: { 
+      skipAuth: true  // 标记此路由跳过认证检查
+    }
+  },
+
+  {
     path: '/404',
     component: () => import('@/views/404'),
     hidden: true

@@ -41,6 +41,14 @@
         </span>
       </el-form-item>
       <el-button :loading="loading" type="primary" style="width:100%;margin-bottom:30px;" @click.native.prevent="handleLogin">Login</el-button>
+      
+      <div class="sso-divider">
+        <span>OR</span>
+      </div>
+      
+      <el-button type="info" style="width:100%;margin-bottom:30px;" @click="handleSSOLogin">
+        Sign in with Unified Authentication
+      </el-button>
 
       <div class="tips">
         <span style="margin-right:20px;">username: admin</span>
@@ -53,6 +61,7 @@
 
 <script>
 import { validUsername } from '@/utils/validate'
+import ssoAuth from '@/utils/sso-auth'
 
 export default {
   name: 'Login',
@@ -83,6 +92,10 @@ export default {
       passwordType: 'password',
       redirect: undefined
     }
+  },
+  async mounted() {
+    // 页面加载时检查SSO session，如果有效则自动跳转
+    await this.checkSSOSession()
   },
   watch: {
     $route: {
@@ -118,6 +131,31 @@ export default {
           return false
         }
       })
+    },
+    
+    handleSSOLogin() {
+      // 重定向到统一认证系统
+      const returnUrl = this.redirect || '/'
+      ssoAuth.redirectToLogin(returnUrl)
+    },
+
+    async checkSSOSession() {
+      try {
+        const ssoUserInfo = await ssoAuth.checkSSOSession()
+        
+        if (ssoUserInfo) {
+          console.log('Found valid SSO session, auto-login and redirect:', ssoUserInfo.name)
+          
+          // 设置用户状态
+          await this.$store.dispatch('user/loginBySSO', ssoUserInfo)
+          
+          // 直接跳转到目标页面，不显示登录界面
+          this.$router.replace({ path: this.redirect || '/' })
+        }
+      } catch (error) {
+        // SSO检查失败，继续显示登录页面
+        console.debug('No valid SSO session, showing login page')
+      }
     }
   }
 }
@@ -230,6 +268,31 @@ $light_gray: #030303;
     color: $dark_gray;
     cursor: pointer;
     user-select: none;
+  }
+
+  .sso-divider {
+    text-align: center;
+    margin: 20px 0;
+    position: relative;
+    
+    &::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: $dark_gray;
+    }
+    
+    span {
+      background: $bg;
+      color: $light_gray;
+      padding: 0 15px;
+      font-size: 14px;
+      position: relative;
+      z-index: 1;
+    }
   }
 }
 </style>

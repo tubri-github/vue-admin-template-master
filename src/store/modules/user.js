@@ -1,5 +1,6 @@
 import { login, logout, getInfo } from '@/api/user'
 import { getToken, setToken, removeToken } from '@/utils/auth'
+import ssoAuth from '@/utils/sso-auth'
 import { resetRouter } from '@/router'
 
 const getDefaultState = () => {
@@ -50,6 +51,17 @@ const actions = {
   // get user info
   getInfo({ commit, state }) {
     return new Promise((resolve, reject) => {
+      // 如果已经有用户信息（比如通过SSO登录设置的），直接返回
+      if (state.roles && state.roles.length > 0 && state.name) {
+        resolve({
+          roles: state.roles,
+          name: state.name,
+          avatar: state.avatar
+        })
+        return
+      }
+      
+      // 否则调用API获取用户信息
       getInfo(state.token).then(response => {
         const { data } = response
 
@@ -72,18 +84,40 @@ const actions = {
     })
   },
 
+  // SSO login action (used by callback page)
+  loginBySSO({ commit }, userInfo) {
+    return new Promise((resolve) => {
+      const { token, name, avatar, roles } = userInfo
+      
+      commit('SET_TOKEN', token)
+      commit('SET_NAME', name)
+      commit('SET_AVATAR', avatar)
+      commit('SET_ROLES', roles)
+      setToken(token)
+      
+      resolve(userInfo)
+    })
+  },
+
   // user logout
   logout({ commit, state }) {
     return new Promise((resolve, reject) => {
-      logout(state.token).then(() => {
+      // 使用SSO登出
+      ssoAuth.logout().then(() => {
         commit('SET_TOKEN', '')
         commit('SET_ROLES', [])
         removeToken() // must remove  token  first
         resetRouter()
         commit('RESET_STATE')
         resolve()
-      }).catch(error => {
-        reject(error)
+      }).catch(() => {
+        // 即使SSO登出失败，也清除本地状态
+        commit('SET_TOKEN', '')
+        commit('SET_ROLES', [])
+        removeToken()
+        resetRouter()
+        commit('RESET_STATE')
+        resolve()
       })
     })
   },

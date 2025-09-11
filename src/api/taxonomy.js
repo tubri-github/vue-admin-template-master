@@ -1,5 +1,5 @@
 import request from '@/utils/request'
-const api_prefix = '/api/'
+const api_prefix = ''
 export function getFamilyList() {
   return request({
     url: api_prefix + 'stats' + '/familyList',

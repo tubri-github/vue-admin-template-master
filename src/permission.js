@@ -5,10 +5,11 @@ import NProgress from 'nprogress' // progress bar
 import 'nprogress/nprogress.css' // progress bar style
 import { getToken } from '@/utils/auth' // get token from cookie
 import getPageTitle from '@/utils/get-page-title'
+import ssoAuth from '@/utils/sso-auth'
 
 NProgress.configure({ showSpinner: false }) // NProgress Configuration
 
-const whiteList = ['/login'] // no redirect whitelist
+const whiteList = ['/login', '/auth/callback'] // no redirect whitelist
 
 router.beforeEach(async(to, from, next) => {
   // start progress bar
@@ -17,12 +18,12 @@ router.beforeEach(async(to, from, next) => {
   // set page title
   document.title = getPageTitle(to.meta.title)
 
-  // determine whether the user has logged in
-  const hasToken = getToken()
+  // 优先检查本地token
+  const hasLocalToken = getToken()
 
-  if (hasToken) {
+  if (hasLocalToken) {
+    // 如果有本地token，按原逻辑处理
     if (to.path === '/login') {
-      // if is logged in, redirect to the home page
       next({ path: '/' })
       NProgress.done()
     } else {
@@ -31,33 +32,18 @@ router.beforeEach(async(to, from, next) => {
         next()
       } else {
         try {
-          // get user info
-          // note: roles must be a object array! such as: ['admin'] or ,['developer','editor']
-          const { roles } = await store.dispatch('user/getInfo')
+          let roles = store.getters.roles
+          
+          if (!roles || roles.length === 0) {
+            const userInfo = await store.dispatch('user/getInfo')
+            roles = userInfo.roles
+          }
 
-          // generate accessible routes map based on roles
           const accessRoutes = await store.dispatch('permission/generateRoutes', roles)
-
-          // dynamically add accessible routes
           router.options.routes.push(...accessRoutes)
           router.addRoutes(accessRoutes)
-
-          // hack method to ensure that addRoutes is complete
-          // set the replace: true, so the navigation will not leave a history record
           next({ ...to, replace: true })
-        }
-      // const hasGetUserInfo = store.getters.name
-      // if (hasGetUserInfo) {
-      //   next()
-      // } else {
-      //   try {
-      //     // get user info
-      //     await store.dispatch('user/getInfo')
-      //
-      //     next()
-      //   }
-          catch (error) {
-          // remove token and go to login page to re-login
+        } catch (error) {
           await store.dispatch('user/resetToken')
           Message.error(error || 'Has Error')
           next(`/login?redirect=${to.path}`)
@@ -66,14 +52,38 @@ router.beforeEach(async(to, from, next) => {
       }
     }
   } else {
-    /* has no token*/
-
+    // 没有本地token，检查SSO session
     if (whiteList.indexOf(to.path) !== -1) {
-      // in the free login whitelist, go directly
+      // 白名单页面直接通过
       next()
     } else {
-      // other pages that do not have permission to access are redirected to the login page.
-      next(`/login?redirect=${to.path}`)
+      try {
+        // 检查SSO session
+        const ssoUserInfo = await ssoAuth.checkSSOSession()
+        
+        if (ssoUserInfo) {
+          // SSO session有效，自动登录
+          console.log('Found valid SSO session, auto-login user:', ssoUserInfo.name)
+          
+          // 设置用户状态
+          await store.dispatch('user/loginBySSO', ssoUserInfo)
+          
+          // 生成可访问路由
+          const accessRoutes = await store.dispatch('permission/generateRoutes', ssoUserInfo.roles)
+          router.options.routes.push(...accessRoutes)
+          router.addRoutes(accessRoutes)
+          
+          // 跳转到目标页面
+          next({ ...to, replace: true })
+        } else {
+          // 没有有效的SSO session，重定向到登录页面
+          next(`/login?redirect=${to.path}`)
+        }
+      } catch (error) {
+        // SSO检查失败，重定向到登录页面
+        console.debug('SSO session check failed:', error)
+        next(`/login?redirect=${to.path}`)
+      }
       NProgress.done()
     }
   }

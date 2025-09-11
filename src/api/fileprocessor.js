@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 
-const api_prefix = '/api/file/'
+const api_prefix = '/file/'
 
 export function uploadFile(file) {
   const formData = new FormData()
