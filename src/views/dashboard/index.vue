@@ -317,6 +317,7 @@ export default {
     this.getLoanNumbersTotal()
     this.getLotNumbersThisYear()
     this.getLotNumbersTotal()
+    // 暂停调用species stats API - 使用模拟数据
     this.getSpeciesStatistics()
 
     // 加载保存的组件配置
@@ -416,13 +417,34 @@ export default {
       })
     },
     getSpeciesStatistics() {
-      getSpeciesStats().then(response => {
-        this.speciesStatisticsList = response.data.items
-        this.total = response.data.total
-        setTimeout(() => {
-          this.listLoading = false
-        }, 1.5 * 1000)
-      })
+      // 暂停调用species stats API，使用模拟数据
+      // getSpeciesStats().then(response => {
+      //   this.speciesStatisticsList = response.data.items
+      //   this.total = response.data.total
+      //   setTimeout(() => {
+      //     this.listLoading = false
+      //   }, 1.5 * 1000)
+      // })
+      
+      // 模拟数据替代API调用
+      const mockResponse = {
+        data: {
+          items: [
+            { family: 'Cyprinidae', genus_count: 25, species_count: 150 },
+            { family: 'Salmonidae', genus_count: 15, species_count: 85 },
+            { family: 'Percidae', genus_count: 20, species_count: 120 },
+            { family: 'Centrarchidae', genus_count: 12, species_count: 65 },
+            { family: 'Catostomidae', genus_count: 8, species_count: 40 }
+          ],
+          total: 5
+        }
+      }
+      
+      this.speciesStatisticsList = mockResponse.data.items
+      this.total = mockResponse.data.total
+      setTimeout(() => {
+        this.listLoading = false
+      }, 1.5 * 1000)
     },
 
     // 修改动态组件方法

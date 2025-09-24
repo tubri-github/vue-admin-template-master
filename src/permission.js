@@ -35,8 +35,14 @@ router.beforeEach(async(to, from, next) => {
           let roles = store.getters.roles
           
           if (!roles || roles.length === 0) {
-            const userInfo = await store.dispatch('user/getInfo')
-            roles = userInfo.roles
+            // 暂停调用getInfo API，直接使用默认角色
+            // const userInfo = await store.dispatch('user/getInfo')
+            // roles = userInfo.roles
+            
+            // 传统登录临时使用admin角色（仅开发期间，生产环境需要恢复真实权限验证）
+            // TODO: 恢复 getInfo API 调用以获取真实用户权限
+            roles = ['admin']
+            store.commit('user/SET_ROLES', roles)
           }
 
           const accessRoutes = await store.dispatch('permission/generateRoutes', roles)

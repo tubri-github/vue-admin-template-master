@@ -88,65 +88,24 @@ export const constantRoutes = [
 ]
 
 export const asyncRoutes = [
-  // {
-  //   path: '/ulm',
-  //   component: Layout,
-  //   name: 'ULM',
-  //   meta: { title: 'ULM', icon: 'nested' },
-  //   children: [
-  //     {
-  //       path: 'jar',
-  //       name: 'jarsize',
-  //       component: () => import('@/views/jarsize/index'),
-  //       meta: { title: 'ULM', icon: 'user' }
-  //     },
-  //     {
-  //       path: 'review',
-  //       name: 'review',
-  //       component: () => import('@/views/jarsize/reviewlist'),
-  //       meta: { title: 'Review', icon: 'user', roles: ['admin'] }
-  //     }
-  //   ]
-  // },
-  //
-  // {
-  //   path: '/ost',
-  //   component: Layout,
-  //   name: 'Osteology',
-  //   meta: { title: 'Osteology', icon: 'user' },
-  //   children: [
-  //     {
-  //       path: 'ost',
-  //       name: 'osteology',
-  //       component: () => import('@/views/Lot/osteology/index'),
-  //       meta: { title: 'Osteology', icon: 'user' }
-  //     }
-  //     // {
-  //     //   path: 'review',
-  //     //   name: 'review',
-  //     //   component: () => import('@/views/Lot/osteology/reviewlist'),
-  //     //   meta: { title: 'Review', icon: 'user', roles:['admin']}
-  //     // },
-  //   ]
-  // },
-
+  // 为所有用户提供基本的查看功能
   {
     path: '/lot',
     component: Layout,
     name: 'Lot',
-    meta: { title: 'Lot', icon: 'jar', roles: ['admin'] },
+    meta: { title: 'Lot', icon: 'jar' },
     children: [
       {
         path: 'add',
         name: 'AddLot',
         component: () => import('@/views/lotform/index'),
-        meta: { title: 'Add', icon: 'jar' }
+        meta: { title: 'Add', icon: 'jar', roles: ['admin', 'editor'] }
       },
       {
         path: 'deaccesion',
         name: 'DeaaccesionALot',
         component: () => import('@/views/Lot/deaccesion'),
-        meta: { title: 'Deaccesion', icon: 'jar' }
+        meta: { title: 'Deaccesion', icon: 'jar', roles: ['admin'] }
       },
       {
         path: 'search',
@@ -160,12 +119,6 @@ export const asyncRoutes = [
             component: () => import('@/views/Lot/baseSearch/index'),
             meta: { title: 'Basic Search', icon: 'form' }
           }
-          // {
-          //   path: 'adv_search',
-          //   name: 'AdvancedSearchLot',
-          //   component: () => import('@/views/Lot/LotSearch/index'),
-          //   meta: { title: 'Advance Search', icon: 'form' },
-          // }
         ]
       }
     ]
@@ -175,13 +128,13 @@ export const asyncRoutes = [
     path: '/locality',
     component: Layout,
     name: 'Locality',
-    meta: { title: 'Locality', icon: 'locality', roles: ['admin'] },
+    meta: { title: 'Locality', icon: 'locality' },
     children: [
       {
         path: 'add',
         name: 'AddLocality',
         component: () => import('@/views/localityform/index'),
-        meta: { title: 'Add', icon: 'locality' }
+        meta: { title: 'Add', icon: 'locality', roles: ['admin', 'editor'] }
       },
       {
         path: 'search',
@@ -196,13 +149,13 @@ export const asyncRoutes = [
     path: '/loan',
     component: Layout,
     name: 'Loan',
-    meta: { title: 'Loan', icon: 'loan', roles: ['admin'] },
+    meta: { title: 'Loan', icon: 'loan' },
     children: [
       {
         path: 'add',
         name: 'AddLoan',
         component: () => import('@/views/loanform/index'),
-        meta: { title: 'Add', icon: 'loan' }
+        meta: { title: 'Add', icon: 'loan', roles: ['admin', 'editor'] }
       },
       {
         path: 'search',
@@ -212,52 +165,43 @@ export const asyncRoutes = [
       }
     ]
   },
+
   {
     path: '/taxonomic',
     component: Layout,
     name: 'Taxonomic',
-    meta: { title: 'Taxonomic', icon: 'tree', roles: ['admin'] },
+    meta: { title: 'Taxonomic', icon: 'tree' },
     children: [
       {
         path: 'add',
         name: 'addTaxon',
         component: () => import('@/views/taxonomic/taxonomicform'),
-        meta: { title: 'Taxonomic', icon: 'tree' }
+        meta: { title: 'Taxonomic', icon: 'tree', roles: ['admin', 'editor'] }
       }
-      // {
-      //   path: 'review',
-      //   name: 'review',
-      //   component: () => import('@/views/Lot/osteology/reviewlist'),
-      //   meta: { title: 'Review', icon: 'user', roles:['admin']}
-      // },
     ]
   },
+
   {
     path: '/fileprocessor',
     component: Layout,
     name: 'FileProcessor',
-    meta: { title: 'FileProcessor', icon: 'tree', roles: ['admin'] },
+    meta: { title: 'File Processor', icon: 'tree', roles: ['admin'] },
     children: [
       {
         path: 'upload',
         name: 'uploadulm',
         component: () => import('@/views/fileprocessor/ImportWizard'),
-        meta: { title: 'FileUpload', icon: 'tree' }
+        meta: { title: 'File Upload', icon: 'tree' }
       },
       {
         path: 'review',
         name: 'reviewulm',
         component: () => import('@/views/fileprocessor/VerbatimWorkspace'),
-        meta: { title: 'BatchReview', icon: 'tree' }
+        meta: { title: 'Batch Review', icon: 'tree' }
       }
-      // {
-      //   path: 'review',
-      //   name: 'review',
-      //   component: () => import('@/views/Lot/osteology/reviewlist'),
-      //   meta: { title: 'Review', icon: 'user', roles:['admin']}
-      // },
     ]
   },
+
   {
     path: '/Person',
     component: Layout,
@@ -270,12 +214,6 @@ export const asyncRoutes = [
         component: () => import('@/views/personform/index'),
         meta: { title: 'Person', icon: 'user' }
       }
-      // {
-      //   path: 'search',
-      //   name: 'SearchPerson',
-      //   // component: () => import('@/views/Lot/LotSearch/index'),
-      //   meta: { title: 'Search', icon: 'form' }
-      // }
     ]
   },
 

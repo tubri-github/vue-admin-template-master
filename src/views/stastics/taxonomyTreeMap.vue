@@ -106,7 +106,23 @@ export default {
     loadFamilies() {
       this.setLoadingState(true)
 
-      getFamilyList().then(res => {
+      // 暂停调用species stats API，使用模拟数据
+      // getFamilyList().then(res => {
+      
+      // 模拟数据 - 替代API调用
+      const mockRes = {
+        data: {
+          items: [
+            { FamilyName: 'Cyprinidae', count: 150 },
+            { FamilyName: 'Salmonidae', count: 85 },
+            { FamilyName: 'Percidae', count: 120 },
+            { FamilyName: 'Centrarchidae', count: 65 },
+            { FamilyName: 'Catostomidae', count: 40 }
+          ]
+        }
+      }
+      
+      Promise.resolve(mockRes).then(res => {
         const nodes = res.data.items.map(f => ({
           name: f.FamilyName,
           value: parseInt(f.count) || 0, // 确保值为数字
@@ -126,7 +142,23 @@ export default {
     loadGenus(familyName) {
       this.setLoadingState(true)
 
-      getGenusList({ familyName }).then(res => {
+      // 暂停调用species stats API，使用模拟数据
+      // getGenusList({ familyName }).then(res => {
+      
+      // 模拟数据 - 替代API调用
+      const mockRes = {
+        data: {
+          items: [
+            { Genus: 'Cyprinus', count: 45 },
+            { Genus: 'Carassius', count: 35 },
+            { Genus: 'Leuciscus', count: 25 },
+            { Genus: 'Rutilus', count: 30 },
+            { Genus: 'Abramis', count: 15 }
+          ]
+        }
+      }
+      
+      Promise.resolve(mockRes).then(res => {
         const nodes = res.data.items.map(g => ({
           name: g.Genus,
           value: parseInt(g.count) || 0,
@@ -147,7 +179,21 @@ export default {
     loadSpecies(familyName, genus, genusLabel) {
       this.setLoadingState(true)
 
-      getSpeciesList({ familyName, genus }).then(res => {
+      // 暂停调用species stats API，使用模拟数据
+      // getSpeciesList({ familyName, genus }).then(res => {
+      
+      // 模拟数据 - 替代API调用
+      const mockRes = {
+        data: {
+          items: [
+            { Species: 'carpio', count: 20 },
+            { Species: 'rubrofuscus', count: 15 },
+            { Species: 'intha', count: 10 }
+          ]
+        }
+      }
+      
+      Promise.resolve(mockRes).then(res => {
         const raw = res.data.items.map(s => ({
           name: s.Species,
           value: parseInt(s.count) || 0

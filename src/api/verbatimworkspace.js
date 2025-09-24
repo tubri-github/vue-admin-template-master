@@ -164,3 +164,23 @@ export function applyTaxonomicSuggestion(record_id) {
     method: 'get',
   })
 }
+
+// 确认批次导入，生成正式的catalog number
+export function confirmBatchImport(batchSerialId) {
+  return request({
+    url: '/file/confirmBatchImport',
+    method: 'post',
+    data: {
+      batchSerialId: batchSerialId,
+      confirmImport: true
+    }
+  })
+}
+
+// 获取批次状态，检查是否有临时ID记录
+export function getBatchStatus(batchSerialId) {
+  return request({
+    url: `/file/batchStatus/${batchSerialId}`,
+    method: 'get'
+  })
+}

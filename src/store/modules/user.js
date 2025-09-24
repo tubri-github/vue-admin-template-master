@@ -51,8 +51,20 @@ const actions = {
   // get user info
   getInfo({ commit, state }) {
     return new Promise((resolve, reject) => {
+      console.log('User store - getInfo called, current state:', {
+        hasRoles: state.roles && state.roles.length > 0,
+        roles: state.roles,
+        name: state.name,
+        token: state.token
+      });
+      
       // 如果已经有用户信息（比如通过SSO登录设置的），直接返回
       if (state.roles && state.roles.length > 0 && state.name) {
+        console.log('User store - Returning existing user info:', {
+          roles: state.roles,
+          name: state.name,
+          avatar: state.avatar
+        });
         resolve({
           roles: state.roles,
           name: state.name,
@@ -60,6 +72,8 @@ const actions = {
         })
         return
       }
+      
+      console.log('User store - No existing info, calling API...');
       
       // 否则调用API获取用户信息
       getInfo(state.token).then(response => {
@@ -70,15 +84,22 @@ const actions = {
         }
 
         const { roles, name, avatar } = data
+        
+        console.log('User store - API returned:', { roles, name, avatar });
+        
         if (!roles || roles.length <= 0) {
+          console.error('User store - ERROR: Invalid roles from API!', { roles, data });
           reject('getInfo: roles must be a non-null array!')
         }
 
         commit('SET_ROLES', roles)
         commit('SET_NAME', name)
         commit('SET_AVATAR', avatar)
+        
+        console.log('User store - Successfully committed to store');
         resolve(data)
       }).catch(error => {
+        console.error('User store - API call failed:', error);
         reject(error)
       })
     })
@@ -89,12 +110,16 @@ const actions = {
     return new Promise((resolve) => {
       const { token, name, avatar, roles } = userInfo
       
+      console.log('User store - loginBySSO called with:', userInfo);
+      console.log('User store - Extracted roles:', roles);
+      
       commit('SET_TOKEN', token)
       commit('SET_NAME', name)
       commit('SET_AVATAR', avatar)
       commit('SET_ROLES', roles)
       setToken(token)
       
+      console.log('User store - SSO login completed, roles set to:', roles);
       resolve(userInfo)
     })
   },

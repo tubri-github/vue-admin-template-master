@@ -219,9 +219,16 @@
             width="55">
           </el-table-column>
 
-          <el-table-column prop="catalogNumber" label="Catalog #" width="120">
+          <el-table-column prop="catalogNumber" label="Catalog # (Temp)" width="140">
             <template slot-scope="scope">
-              <span class="catalog-number">{{scope.row.catalogNumber}}</span>
+              <span class="catalog-number">
+                <span v-if="isTemporaryCatalogNumber(scope.row.catalogNumber)" class="temp-catalog-number">
+                  {{scope.row.catalogNumber}}
+                </span>
+                <span v-else class="normal-catalog-number">
+                  {{scope.row.catalogNumber}}
+                </span>
+              </span>
             </template>
           </el-table-column>
 
@@ -350,11 +357,6 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="Collection Date" width="120">
-            <template slot-scope="scope">
-              <span>{{formatDate(scope.row.collectionDate) || '-'}}</span>
-            </template>
-          </el-table-column>
 
           <el-table-column label="Total #" width="80">
             <template slot-scope="scope">
@@ -506,6 +508,11 @@ export default {
     }
   },
   methods: {
+    // 判断是否为临时catalog number
+    isTemporaryCatalogNumber(catalogNumber) {
+      return catalogNumber && catalogNumber.toString().startsWith('TEMP_');
+    },
+
     // 加载可用批次列表
     async loadAvailableBatches() {
       this.loadingBatch = true;
@@ -1282,6 +1289,17 @@ export default {
 .catalog-number {
   font-weight: 500;
   color: #1f2937;
+}
+
+.temp-catalog-number {
+  color: #e6a23c;
+  font-style: italic;
+  font-weight: 500;
+}
+
+.normal-catalog-number {
+  color: #1f2937;
+  font-weight: 500;
 }
 
 /* 响应式设计 */

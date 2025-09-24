@@ -1,6 +1,6 @@
 module.exports = {
 
-  title: 'Vue Admin Template',
+  title: 'Fish Specimen Museum Management Tool',
 
   /**
    * @type {boolean} true | false

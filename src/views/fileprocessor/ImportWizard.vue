@@ -180,7 +180,7 @@ export default {
       isValidating: false,
 
       // Import data
-      importMode: 'direct',
+      importMode: 'verbatim',
       importInProgress: false,
       importResult: null,
 
@@ -256,7 +256,6 @@ export default {
         genus: ['genus'],
         species: ['species'],
         collectionDate: ['collection_date', 'date_collected', 'date', 'collection date'],
-        localityId: ['locality_id', 'locality id', 'location_id'],
         fieldNumber: ['field_number', 'field number', 'field_no'],
         totalNumber: ['total_number', 'total number', 'count', 'number'],
         storage: ['storage', 'tank', 'location'],
@@ -413,12 +412,31 @@ export default {
     // Download template
     async downloadTemplate() {
       try {
+        console.log('Starting template download...')
         const response = await downloadTemplateAPI()
+        
+        console.log('Download response:', response)
+        console.log('Response data type:', typeof response.data)
+        console.log('Response data size:', response.data?.size || 'unknown')
 
-        // Create download link
-        const blob = new Blob([response], {
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        })
+        // 从axios响应中提取实际的blob数据
+        const blob = response.data
+        
+        // 检查blob是否有效
+        if (!blob || blob.size < 100) {
+          if (blob instanceof Blob) {
+            const text = await blob.text()
+            console.error('Server returned small response:', text)
+            this.$message.error(`Server error: ${text}`)
+            return
+          }
+          throw new Error('Invalid response from server')
+        }
+
+        console.log('Blob size:', blob.size)
+        console.log('Blob type:', blob.type)
+        
+        // 直接使用返回的blob，不需要重新创建
         const url = window.URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
@@ -431,9 +449,10 @@ export default {
         this.$message.success('Template downloaded successfully')
       } catch (error) {
         console.error('Download error:', error)
-        this.$message.error('Failed to download template')
+        this.$message.error(`Failed to download template: ${error.message}`)
       }
     },
+
 
     // // Navigate to Field Number Management
     // goToFieldNumberManagement() {
@@ -467,7 +486,7 @@ export default {
         validationSummary: {}
       }
       this.isValidating = false
-      this.importMode = 'direct'
+      this.importMode = 'verbatim'
       this.importInProgress = false
       this.importResult = null
       this.clearSelectedFile()

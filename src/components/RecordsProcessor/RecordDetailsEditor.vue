@@ -49,19 +49,6 @@
 
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="Collection Date" prop="collectionDate">
-              <el-date-picker
-                v-model="localRecord.collectionDate"
-                type="date"
-                placeholder="Select collection date"
-                format="yyyy-MM-dd"
-                value-format="yyyy-MM-dd"
-                @change="handleFieldChange"
-                class="w-full">
-              </el-date-picker>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
             <el-form-item label="Total Number" prop="totalNumber">
               <el-input-number
                 v-model="localRecord.totalNumber"
@@ -204,16 +191,6 @@
               </el-tag>
             </el-form-item>
           </el-col>
-          <el-col :span="8">
-            <el-form-item label="Overall Status">
-              <el-tag
-                :type="getOverallStatusType()"
-                size="medium">
-                <i :class="getOverallStatusIcon()"></i>
-                {{getOverallStatusText()}}
-              </el-tag>
-            </el-form-item>
-          </el-col>
         </el-row>
 
         <el-row :gutter="20">
@@ -256,40 +233,9 @@
           <i class="el-icon-refresh"></i>
           Reset
         </el-button>
-        <el-button @click="validateForm">
-          <i class="el-icon-check"></i>
-          Validate
-        </el-button>
       </div>
     </el-form>
 
-    <!-- 变更历史 -->
-    <el-card v-if="changeHistory.length > 0" class="history-section">
-      <div slot="header" class="section-header">
-        <i class="el-icon-time"></i>
-        Change History
-      </div>
-
-      <el-timeline>
-        <el-timeline-item
-          v-for="(change, index) in changeHistory"
-          :key="index"
-          :timestamp="formatTimestamp(change.timestamp)"
-          placement="top">
-
-          <div class="change-item">
-            <div class="change-field">
-              <strong>{{change.field}}</strong>
-            </div>
-            <div class="change-values">
-              <span class="old-value">{{change.oldValue || 'Empty'}}</span>
-              <i class="el-icon-right"></i>
-              <span class="new-value">{{change.newValue || 'Empty'}}</span>
-            </div>
-          </div>
-        </el-timeline-item>
-      </el-timeline>
-    </el-card>
   </div>
 </template>
 
@@ -307,16 +253,13 @@ export default {
       localRecord: {},
       originalRecord: {},
       saving: false,
-      changeHistory: [],
+      isInitializing: false, // 标志防止用户操作时被watch覆盖
 
       // 表单验证规则
       formRules: {
         totalNumber: [
           { required: true, message: 'Total number is required', trigger: 'blur' },
           { type: 'number', min: 1, message: 'Total number must be at least 1', trigger: 'blur' }
-        ],
-        collectionDate: [
-          { type: 'date', message: 'Invalid date format', trigger: 'change' }
         ]
       }
     }
@@ -324,7 +267,7 @@ export default {
   computed: {
     hasRecordChanges() {
       const recordFields = [
-        'collectionDate', 'totalNumber', 'storage', 'jarSize',
+        'totalNumber', 'storage', 'jarSize',
         'prevNumber', 'inventory', 'remarks', 'recordVerificationStatus'
       ]
 
@@ -336,15 +279,15 @@ export default {
   watch: {
     record: {
       immediate: true,
-      deep: true,
       handler(newRecord) {
         console.log('RecordDetailsEditor received record:', newRecord);
+
+        this.isInitializing = true; // 设置初始化标志
 
         // 从record中获取验证状态信息
         this.localRecord = {
           catalogNumber: newRecord.catalogNumber || '',
           fieldNumber: newRecord.fieldNumber || '',
-          collectionDate: newRecord.collectionDate || null,
           totalNumber: typeof newRecord.totalNumber === 'number' ? newRecord.totalNumber : 1,
           storage: newRecord.storage || '',
           jarSize: newRecord.jarSize || '',
@@ -370,6 +313,11 @@ export default {
         this.originalRecord = { ...this.localRecord };
 
         console.log('RecordDetailsEditor initialized localRecord:', this.localRecord);
+        
+        // 在下一个tick清除初始化标志
+        this.$nextTick(() => {
+          this.isInitializing = false;
+        });
       }
     }
   },
@@ -404,19 +352,25 @@ export default {
 
     // 处理验证状态变更
     handleVerificationStatusChange() {
+      // 如果正在初始化，跳过事件处理
+      if (this.isInitializing) {
+        return;
+      }
+
       console.log('Record verification status changed to:', this.localRecord.recordVerificationStatus);
 
       // 记录变更历史
       this.recordChanges();
 
-      // 通知父组件
-      this.$emit('record-updated', this.getUpdateData());
+      // 使用nextTick确保DOM更新完成后再通知父组件
+      this.$nextTick(() => {
+        this.$emit('record-updated', this.getUpdateData());
+      });
     },
 
     // 获取更新数据
     getUpdateData() {
       return {
-        collectionDate: this.localRecord.collectionDate,
         totalNumber: this.localRecord.totalNumber,
         storage: this.localRecord.storage,
         jarSize: this.localRecord.jarSize,
@@ -431,7 +385,7 @@ export default {
     recordChanges() {
       const changes = [];
       const fieldsToTrack = [
-        'collectionDate', 'totalNumber', 'storage', 'jarSize',
+        'totalNumber', 'storage', 'jarSize',
         'prevNumber', 'inventory', 'remarks', 'recordVerificationStatus'
       ];
 
@@ -446,14 +400,11 @@ export default {
         }
       });
 
-      // 更新变更历史
-      this.changeHistory = changes;
     },
 
     // 获取字段显示名称
     getFieldDisplayName(field) {
       const fieldNames = {
-        collectionDate: 'Collection Date',
         totalNumber: 'Total Number',
         storage: 'Storage Location',
         jarSize: 'Jar Size',
@@ -468,24 +419,13 @@ export default {
     // 重置表单
     resetForm() {
       this.localRecord = { ...this.originalRecord };
-      this.changeHistory = [];
       this.$message.info('Form reset to original values');
     },
 
-    // 验证表单
-    validateForm() {
-      this.$refs.recordForm.validate((valid) => {
-        if (valid) {
-          this.$message.success('Form validation passed');
-        } else {
-          this.$message.error('Please correct the form errors');
-        }
-      });
-    },
 
-    // 获取物种状态相关方法 - 使用实时状态
+    // 获取物种状态相关方法 - 基于实际数据状态
     getSpeciesStatusType() {
-      const status = this.localRecord.speciesVerificationStatus;
+      const status = this.getCurrentSpeciesStatus();
       switch(status) {
         case 'verified': return 'success';
         case 'needs_review': return 'warning';
@@ -495,7 +435,7 @@ export default {
     },
 
     getSpeciesStatusIcon() {
-      const status = this.localRecord.speciesVerificationStatus;
+      const status = this.getCurrentSpeciesStatus();
       switch(status) {
         case 'verified': return 'el-icon-check';
         case 'needs_review': return 'el-icon-warning';
@@ -505,7 +445,7 @@ export default {
     },
 
     getSpeciesStatusText() {
-      const status = this.localRecord.speciesVerificationStatus;
+      const status = this.getCurrentSpeciesStatus();
       switch(status) {
         case 'verified': return 'Verified';
         case 'needs_review': return 'Needs Review';
@@ -514,9 +454,19 @@ export default {
       }
     },
 
-    // 获取地点状态相关方法 - 使用实时状态
+    // 实时计算当前物种验证状态
+    getCurrentSpeciesStatus() {
+      if (this.localRecord.taxonId) {
+        return 'verified';
+      } else if (this.localRecord.verbatimTaxonomicId) {
+        return 'needs_review';
+      }
+      return 'pending';
+    },
+
+    // 获取地点状态相关方法 - 基于实际数据状态
     getLocalityStatusType() {
-      const status = this.localRecord.localityVerificationStatus;
+      const status = this.getCurrentLocalityStatus();
       switch(status) {
         case 'verified': return 'success';
         case 'needs_review': return 'warning';
@@ -526,7 +476,7 @@ export default {
     },
 
     getLocalityStatusIcon() {
-      const status = this.localRecord.localityVerificationStatus;
+      const status = this.getCurrentLocalityStatus();
       switch(status) {
         case 'verified': return 'el-icon-check';
         case 'needs_review': return 'el-icon-warning';
@@ -536,7 +486,7 @@ export default {
     },
 
     getLocalityStatusText() {
-      const status = this.localRecord.localityVerificationStatus;
+      const status = this.getCurrentLocalityStatus();
       switch(status) {
         case 'verified': return 'Verified';
         case 'needs_review': return 'Needs Review';
@@ -545,11 +495,21 @@ export default {
       }
     },
 
-    // 获取整体状态相关方法
+    // 实时计算当前地点验证状态
+    getCurrentLocalityStatus() {
+      if (this.localRecord.localityId) {
+        return 'verified';
+      } else if (this.localRecord.verbatimLocalityId) {
+        return 'needs_review';
+      }
+      return 'pending';
+    },
+
+    // 获取整体状态相关方法 - 基于实时状态
     getOverallStatusType() {
-      const speciesStatus = this.localRecord.speciesVerificationStatus;
-      const localityStatus = this.localRecord.localityVerificationStatus;
-      const recordStatus = this.localRecord.recordVerificationStatus;
+      const speciesStatus = this.getCurrentSpeciesStatus();
+      const localityStatus = this.getCurrentLocalityStatus();
+      const recordStatus = this.getCurrentRecordStatus();
 
       // 如果三个都是verified，则为completed
       if (speciesStatus === 'verified' && localityStatus === 'verified' && recordStatus === 'verified') {
@@ -560,17 +520,17 @@ export default {
         status === 'rejected' || status === 'needs_review')) {
         return 'warning';
       }
-      // 如果有verified的
+      // 如果有部分verified的，显示为success（绿色）
       if ([speciesStatus, localityStatus, recordStatus].some(status => status === 'verified')) {
-        return 'primary';
+        return 'success';
       }
       return 'info';
     },
 
     getOverallStatusIcon() {
-      const speciesStatus = this.localRecord.speciesVerificationStatus;
-      const localityStatus = this.localRecord.localityVerificationStatus;
-      const recordStatus = this.localRecord.recordVerificationStatus;
+      const speciesStatus = this.getCurrentSpeciesStatus();
+      const localityStatus = this.getCurrentLocalityStatus();
+      const recordStatus = this.getCurrentRecordStatus();
 
       if (speciesStatus === 'verified' && localityStatus === 'verified' && recordStatus === 'verified') {
         return 'el-icon-check';
@@ -586,9 +546,9 @@ export default {
     },
 
     getOverallStatusText() {
-      const speciesStatus = this.localRecord.speciesVerificationStatus;
-      const localityStatus = this.localRecord.localityVerificationStatus;
-      const recordStatus = this.localRecord.recordVerificationStatus;
+      const speciesStatus = this.getCurrentSpeciesStatus();
+      const localityStatus = this.getCurrentLocalityStatus();
+      const recordStatus = this.getCurrentRecordStatus();
 
       if (speciesStatus === 'verified' && localityStatus === 'verified' && recordStatus === 'verified') {
         return 'Completed';
@@ -598,19 +558,57 @@ export default {
         return 'Needs Review';
       }
       if ([speciesStatus, localityStatus, recordStatus].some(status => status === 'verified')) {
-        return 'Partially Verified';
+        return 'Verified';
       }
       return 'Pending';
     },
 
-    // 获取完成度百分比
+    // 实时计算当前Record状态
+    getCurrentRecordStatus() {
+      // Record Details状态应该基于用户的手动验证状态，不是自动判断
+      return this.localRecord.recordVerificationStatus || 'pending';
+    },
+
+    // Record Details Status显示方法
+    getRecordDetailsStatusType() {
+      const status = this.getCurrentRecordStatus();
+      switch(status) {
+        case 'verified': return 'success';
+        case 'needs_review': return 'warning';
+        case 'rejected': return 'danger';
+        default: return 'info';
+      }
+    },
+
+    getRecordDetailsStatusIcon() {
+      const status = this.getCurrentRecordStatus();
+      switch(status) {
+        case 'verified': return 'el-icon-check';
+        case 'needs_review': return 'el-icon-warning';
+        case 'rejected': return 'el-icon-close';
+        default: return 'el-icon-minus';
+      }
+    },
+
+    getRecordDetailsStatusText() {
+      const status = this.getCurrentRecordStatus();
+      switch(status) {
+        case 'verified': return 'Verified';
+        case 'needs_review': return 'Needs Review';
+        case 'rejected': return 'Rejected';
+        default: return 'Pending';
+      }
+    },
+
+    // 获取完成度百分比 - 基于实时状态
     getCompletionPercentage() {
       let completed = 0;
       let total = 3;
 
-      if (this.localRecord.speciesVerificationStatus === 'verified') completed++;
-      if (this.localRecord.localityVerificationStatus === 'verified') completed++;
-      if (this.localRecord.recordVerificationStatus === 'verified') completed++;
+      // 使用实时计算的状态
+      if (this.getCurrentSpeciesStatus() === 'verified') completed++;
+      if (this.getCurrentLocalityStatus() === 'verified') completed++;
+      if (this.getCurrentRecordStatus() === 'verified') completed++;
 
       return Math.round((completed / total) * 100);
     },
@@ -624,10 +622,6 @@ export default {
       return '#F56C6C';
     },
 
-    // 格式化时间戳
-    formatTimestamp(timestamp) {
-      return new Date(timestamp).toLocaleString();
-    }
   }
 };
 </script>
@@ -670,45 +664,6 @@ export default {
   margin: 0 10px;
 }
 
-/* 变更历史样式 */
-.history-section {
-  margin-top: 30px;
-}
-
-.change-item {
-  padding: 10px;
-  background: #f8f9fa;
-  border-radius: 6px;
-  border-left: 3px solid #409EFF;
-}
-
-.change-field {
-  font-weight: 500;
-  color: #333;
-  margin-bottom: 5px;
-}
-
-.change-values {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 14px;
-}
-
-.old-value {
-  color: #f56565;
-  text-decoration: line-through;
-  background: #fed7d7;
-  padding: 2px 6px;
-  border-radius: 3px;
-}
-
-.new-value {
-  color: #38a169;
-  background: #c6f6d5;
-  padding: 2px 6px;
-  border-radius: 3px;
-}
 
 /* 状态标签样式 */
 .el-tag {

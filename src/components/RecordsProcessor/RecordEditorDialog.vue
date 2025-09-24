@@ -4,7 +4,7 @@
 -->
 <template>
   <el-dialog
-    :title="`Edit Record: ${record.catalogNumber}`"
+    :title="getDialogTitle()"
     :visible="visible"
     :before-close="handleClose"
     width="90%"
@@ -13,6 +13,17 @@
   >
 
     <div class="editor-container">
+      <!-- 未保存变动提示条 -->
+      <el-alert
+        v-if="hasAnyChanges"
+        title="You have unsaved changes"
+        type="warning"
+        :description="getChangesDescription()"
+        show-icon
+        :closable="false"
+        class="changes-alert">
+      </el-alert>
+      
       <!-- 标签页切换 -->
       <el-tabs v-model="activeTab" class="editor-tabs">
 
@@ -22,7 +33,15 @@
             <i class="el-icon-search" />
             Species Verification
             <el-tag
-              v-if="localRecord.taxonId"
+              v-if="hasSpeciesChanges"
+              type="warning"
+              size="mini"
+              class="ml-2 changes-indicator"
+            >
+              UNSAVED
+            </el-tag>
+            <el-tag
+              v-else-if="localRecord.taxonId"
               type="success"
               size="mini"
               class="ml-2"
@@ -55,7 +74,15 @@
             <i class="el-icon-location" />
             Locality Verification
             <el-tag
-              v-if="localRecord.localityId"
+              v-if="hasLocalityChanges"
+              type="warning"
+              size="mini"
+              class="ml-2 changes-indicator"
+            >
+              UNSAVED
+            </el-tag>
+            <el-tag
+              v-else-if="localRecord.localityId"
               type="success"
               size="mini"
               class="ml-2"
@@ -88,13 +115,14 @@
             Record Details
             <el-tag
               v-if="hasRecordChanges"
-              type="info"
+              type="warning"
               size="mini"
-              class="ml-2"
+              class="ml-2 changes-indicator"
             >
-              *
+              UNSAVED
             </el-tag>
           </span>
+
 
           <!-- 记录编辑内容 -->
           <record-details-editor
@@ -119,13 +147,14 @@
           Cancel
         </el-button>
         <el-button
-          type="primary"
+          :type="hasAnyChanges ? 'warning' : 'primary'"
           :loading="saving"
           :disabled="!hasAnyChanges"
+          :class="{ 'pulse-button': hasAnyChanges }"
           @click="saveRecord"
         >
           <i class="el-icon-check" />
-          Save Changes
+          {{ hasAnyChanges ? 'Save Changes!' : 'Save Changes' }}
         </el-button>
       </div>
     </div>
@@ -290,6 +319,16 @@ export default {
 
     // 处理物种选择
     handleSpeciesSelected(taxon) {
+      // 处理清除匹配的情况
+      if (!taxon.TaxonID || taxon.TaxonID === null) {
+        console.log('Clearing species match')
+        this.localRecord.taxonId = null
+        this.localRecord.taxonomic = null
+        this.localRecord.speciesVerificationStatus = 'pending'
+        console.log('Species match cleared, status set to pending')
+        return
+      }
+
       this.localRecord.taxonId = taxon.TaxonID
       this.localRecord.taxonomic = {
         TaxonID: taxon.TaxonID,
@@ -324,9 +363,13 @@ export default {
 
       const localityId = locality.LocalityID || locality.Locality1ID
 
-      if (!localityId) {
-        console.error('No valid locality ID found in:', locality)
-        this.$message.error('Invalid locality data received')
+      // 处理清除匹配的情况
+      if (!localityId || localityId === null) {
+        console.log('Clearing locality match')
+        this.localRecord.localityId = null
+        this.localRecord.locality = null
+        this.localRecord.localityVerificationStatus = 'pending'
+        console.log('Locality match cleared, status set to pending')
         return
       }
 
@@ -475,6 +518,33 @@ export default {
       return notes.join('; ')
     },
 
+    // 获取对话框标题
+    getDialogTitle() {
+      return `Edit Record: ${this.record.catalogNumber}`;
+    },
+
+    // 获取变动描述
+    getChangesDescription() {
+      const changes = []
+      if (this.hasSpeciesChanges) {
+        changes.push('Species verification')
+      }
+      if (this.hasLocalityChanges) {
+        changes.push('Locality verification')
+      }
+      if (this.hasRecordChanges) {
+        changes.push('Record details')
+      }
+      
+      if (changes.length === 1) {
+        return `${changes[0]} has been modified. Don't forget to save your changes!`
+      } else if (changes.length === 2) {
+        return `${changes.join(' and ')} have been modified. Don't forget to save your changes!`
+      } else {
+        return `${changes.slice(0, -1).join(', ')}, and ${changes[changes.length - 1]} have been modified. Don't forget to save your changes!`
+      }
+    },
+
     // 处理关闭
     async handleClose() {
       if (this.hasAnyChanges) {
@@ -535,5 +605,43 @@ export default {
 
 .ml-2 {
   margin-left: 8px;
+}
+
+/* 变动提示条 */
+.changes-alert {
+  margin-bottom: 15px;
+  border-radius: 6px;
+}
+
+/* 未保存变动的警告样式 */
+.changes-indicator {
+  animation: subtle-pulse 2s infinite;
+  font-weight: bold !important;
+}
+
+/* 保存按钮的脉冲动画 */
+.pulse-button {
+  animation: button-pulse 1.5s infinite;
+  font-weight: bold !important;
+}
+
+@keyframes subtle-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes button-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 108, 108, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(245, 108, 108, 0);
+  }
 }
 </style>

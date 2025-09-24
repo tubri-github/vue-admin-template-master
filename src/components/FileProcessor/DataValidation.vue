@@ -218,13 +218,13 @@
         </div>
 
         <el-radio-group v-model="selectedImportMode" @change="handleImportModeChange">
-          <el-radio-button label="direct">
-            <i class="el-icon-lightning mr-1" />
-            Direct Import
-          </el-radio-button>
           <el-radio-button label="verbatim">
             <i class="el-icon-document-copy mr-1" />
             Verbatim Import
+          </el-radio-button>
+          <el-radio-button label="direct">
+            <i class="el-icon-lightning mr-1" />
+            Direct Import
           </el-radio-button>
         </el-radio-group>
 
@@ -326,7 +326,7 @@ export default {
   },
   data() {
     return {
-      selectedImportMode: 'direct',
+      selectedImportMode: 'verbatim',
       matchingDetailsPage: 1
     }
   },
@@ -580,18 +580,11 @@ export default {
 
     // Format mapping value for display
     formatMappingValue(key, value) {
-      if (key === 'fieldNumber' && value === 'auto-generate') {
-        return 'Auto generate'
-      }
-
       return value
     },
 
     // Get mapping class for styling
     getMappingClass(key, value) {
-      if (value === 'auto-generate') {
-        return 'auto-generate'
-      }
       return ''
     },
 

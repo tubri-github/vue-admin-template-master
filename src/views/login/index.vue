@@ -1,6 +1,30 @@
 <template>
   <div class="login-container">
-    <el-form ref="loginForm" :model="loginForm" :rules="loginRules" class="login-form" auto-complete="on" label-position="left">
+    <!-- SSO 重定向提示 -->
+    <div v-if="ssoRedirecting" class="sso-redirect-notice">
+      <div class="redirect-card">
+        <el-icon class="el-icon-loading redirect-icon"></el-icon>
+        <h3>Redirecting to Unified Authentication</h3>
+        <p>You will be redirected to the unified authentication system...</p>
+        <el-button 
+          type="text" 
+          size="small" 
+          @click="useSSODirectLogin = false; ssoRedirecting = false"
+          class="fallback-link">
+          Use traditional login instead
+        </el-button>
+      </div>
+    </div>
+
+    <!-- 传统登录表单（保留的原有代码） -->
+    <el-form 
+      v-if="!useSSODirectLogin && !ssoRedirecting" 
+      ref="loginForm" 
+      :model="loginForm" 
+      :rules="loginRules" 
+      class="login-form" 
+      auto-complete="on" 
+      label-position="left">
 
       <div class="title-container">
         <h3 class="title">Museum Online Management Tool  Login</h3>
@@ -90,12 +114,23 @@ export default {
       },
       loading: false,
       passwordType: 'password',
-      redirect: undefined
+      redirect: undefined,
+      // 控制是否使用SSO直接登录 - 从环境变量读取
+      // 设为 false 可恢复传统登录页面，保留原有的用户名密码登录功能
+      // 设为 true 则直接跳转到SSO统一认证系统
+      useSSODirectLogin: process.env.VUE_APP_ENABLE_SSO_DIRECT_LOGIN === 'true',
+      ssoRedirecting: false
     }
   },
   async mounted() {
     // 页面加载时检查SSO session，如果有效则自动跳转
-    await this.checkSSOSession()
+    const hasValidSSOSession = await this.checkSSOSession()
+    
+    // 如果开启SSO直接登录且没有有效的SSO session，直接跳转到SSO登录页面
+    // 将 useSSODirectLogin 设为 false 可以恢复传统登录页面
+    if (this.useSSODirectLogin && !hasValidSSOSession) {
+      this.redirectToSSODirectly()
+    }
   },
   watch: {
     $route: {
@@ -151,11 +186,23 @@ export default {
           
           // 直接跳转到目标页面，不显示登录界面
           this.$router.replace({ path: this.redirect || '/' })
+          return true // 表示已经处理了SSO登录
         }
       } catch (error) {
         // SSO检查失败，继续显示登录页面
         console.debug('No valid SSO session, showing login page')
       }
+      return false // 表示没有有效的SSO session
+    },
+
+    // 直接跳转到SSO登录
+    redirectToSSODirectly() {
+      this.ssoRedirecting = true
+      // 短暂延迟确保页面加载完成，然后跳转到SSO
+      setTimeout(() => {
+        console.log('Redirecting to SSO login automatically...')
+        this.handleSSOLogin()
+      }, 1000) // 延长一点时间让用户看到提示
     }
   }
 }
@@ -293,6 +340,60 @@ $light_gray: #030303;
       position: relative;
       z-index: 1;
     }
+  }
+
+  // SSO 重定向提示样式
+  .sso-redirect-notice {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    
+    .redirect-card {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 40px;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      max-width: 400px;
+      
+      .redirect-icon {
+        font-size: 48px;
+        color: #409EFF;
+        margin-bottom: 20px;
+        animation: spin 1s linear infinite;
+      }
+      
+      h3 {
+        color: $light_gray;
+        font-size: 24px;
+        margin-bottom: 16px;
+        font-weight: 600;
+      }
+      
+      p {
+        color: #909399;
+        font-size: 16px;
+        margin-bottom: 24px;
+        line-height: 1.5;
+      }
+      
+      .fallback-link {
+        color: #409EFF;
+        font-size: 14px;
+        
+        &:hover {
+          color: #66b1ff;
+        }
+      }
+    }
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
   }
 }
 </style>

@@ -373,8 +373,7 @@ export default {
           key: 'fieldNumber',
           label: 'Field Number',
           description: 'Original field collection number',
-          required: false,
-          specialOptions: ['auto-generate']
+          required: false
         },
         {
           key: 'totalNumber',
@@ -414,12 +413,6 @@ export default {
 
       // Locality fields
       localityFields: [
-        {
-          key: 'localityId',
-          label: 'Locality ID',
-          description: 'Reference to existing locality record in system',
-          required: false
-        },
         {
           key: 'localityString',
           label: 'Locality String',
@@ -720,12 +713,8 @@ export default {
         }
       })
 
-      // Check if field number is set to auto-generate (needs special handling)
-      if (cleanedMappings.fieldNumber === 'auto-generate') {
-        this.$emit('field-number-options', cleanedMappings)
-      } else {
-        this.$emit('confirm', cleanedMappings)
-      }
+      // Emit confirmed mappings
+      this.$emit('confirm', cleanedMappings)
     },
 
     // Reset mappings
