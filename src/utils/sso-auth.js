@@ -71,7 +71,7 @@ class SSOAuthClient {
 
     // 构建SSO登录URL - 重定向到认证中心
     // 确保回调URL干净，不包含任何hash路径
-    const cleanCallbackUrl = `${this.config.currentDomain}/tummt/auth/callback`
+    const cleanCallbackUrl = `${this.config.currentDomain}/auth/callback`
     const params = new URLSearchParams({
       redirect_uri: cleanCallbackUrl,
       project: this.config.projectCode,
@@ -98,7 +98,7 @@ class SSOAuthClient {
       }
 
       // 使用授权码换取token
-      const cleanCallbackUrl = `${this.config.currentDomain}/tummt/auth/callback`
+      const cleanCallbackUrl = `${this.config.currentDomain}/auth/callback`
       const params = new URLSearchParams({
         code: code,
         project: this.config.projectCode,
