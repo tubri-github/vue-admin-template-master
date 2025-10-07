@@ -430,6 +430,7 @@ import {
   updateVerbatimRecord,
   exportBatchResults,
   markBatchCompleted,
+  confirmBatchImport,
   applyTaxonomicSuggestion,
   batchUpdateVerificationStatus
 } from '@/api/verbatimworkspace'
@@ -1111,12 +1112,50 @@ export default {
         if (!result) return;
       }
 
+      // 二次确认：是否生成正式 catalog number
       try {
+        const confirmGenerate = await this.$confirm(
+          'This will generate official catalog numbers for all records in this batch. This action cannot be undone. Continue?',
+          'Confirm Final Import',
+          {
+            type: 'warning',
+            confirmButtonText: 'Generate Catalog Numbers',
+            cancelButtonText: 'Cancel'
+          }
+        );
+        if (!confirmGenerate) return;
+      } catch {
+        return; // 用户取消
+      }
+
+      const loading = this.$loading({
+        lock: true,
+        text: 'Generating catalog numbers and migrating data...',
+        spinner: 'el-icon-loading',
+        background: 'rgba(0, 0, 0, 0.7)'
+      });
+
+      try {
+        // 1. 标记批次为完成
         await markBatchCompleted(this.selectedBatchId);
-        this.$message.success('Batch marked as completed');
+
+        // 2. 调用 confirmBatchImport 生成正式 catalog number
+        const importResult = await confirmBatchImport(this.selectedBatchId);
+
+        loading.close();
+
+        // 显示成功信息
+        this.$notify({
+          title: 'Success',
+          message: `Batch completed! Generated catalog numbers: ${importResult.data.catalog_number_range.start} - ${importResult.data.catalog_number_range.end}`,
+          type: 'success',
+          duration: 5000
+        });
+
         await this.loadBatchData();
       } catch (error) {
-        this.$message.error('Failed to mark batch as completed');
+        loading.close();
+        this.$message.error('Failed to complete batch import: ' + (error.message || 'Unknown error'));
         console.error(error);
       }
     },

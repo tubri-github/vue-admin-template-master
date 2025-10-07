@@ -159,7 +159,7 @@ export default {
 
       // Upload configuration
       uploadAction: '/api/upload/upload', // Not used when calling API directly
-      fileSize: 10, // MB
+      fileSize: 50, // MB
       uploadHint: 'Support Excel or CSV format, please ensure it contains the necessary ULM data fields',
       acceptedFileTypes: '.csv,.xlsx,.xls',
 
