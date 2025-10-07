@@ -141,22 +141,13 @@
 
           <el-button
             v-if="importMode === 'verbatim'"
+            type="success"
             size="medium"
-            icon="el-icon-edit"
+            icon="el-icon-s-check"
             class="action-button"
-            @click="goToFieldNumberManagement"
+            @click="goToBatchReview"
           >
-            Review & Verify Data
-          </el-button>
-
-          <el-button
-            v-else
-            size="medium"
-            icon="el-icon-price-tag"
-            class="action-button"
-            @click="goToFieldNumberManagement"
-          >
-            Field Number Management
+            Go to Batch Review
           </el-button>
 
           <el-button
@@ -296,8 +287,14 @@ export default {
     }
   },
   methods: {
-    goToFieldNumberManagement() {
-      this.$emit('goto-field-number-management')
+    goToBatchReview() {
+      // 跳转到 VerbatimWorkspace (Batch Review) 并带上 batchSerialId
+      this.$router.push({
+        path: '/fileprocessor/verbatim-workspace',
+        query: {
+          batchId: this.importResult.batchSerialId
+        }
+      })
     },
 
     viewRecords() {

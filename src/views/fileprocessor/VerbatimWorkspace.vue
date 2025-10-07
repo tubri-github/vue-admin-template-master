@@ -65,10 +65,17 @@
         <div slot="header" class="clearfix">
           <span>Processing Progress</span>
           <el-button
-            style="float: right; padding: 3px 0"
+            style="float: right; padding: 3px 0; margin-left: 10px;"
             type="text"
             @click="refreshProgress">
             <i class="el-icon-refresh"></i>
+          </el-button>
+          <el-button
+            style="float: right; padding: 3px 0"
+            type="text"
+            @click="revalidateBatch">
+            <i class="el-icon-refresh-right"></i>
+            Re-validate
           </el-button>
         </div>
 
@@ -132,6 +139,38 @@
             </div>
           </el-col>
         </el-row>
+
+        <!-- Warnings & Issues Statistics -->
+        <el-divider></el-divider>
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <div class="progress-item warning-stat">
+              <div class="progress-number" style="color: #E6A23C;">{{progressStats.hasWarnings || 0}}</div>
+              <div class="progress-label">
+                <i class="el-icon-warning" style="color: #E6A23C;"></i>
+                Records with Warnings
+              </div>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="progress-item error-stat">
+              <div class="progress-number" style="color: #F56C6C;">{{progressStats.hasErrors || 0}}</div>
+              <div class="progress-label">
+                <i class="el-icon-close" style="color: #F56C6C;"></i>
+                Records with Errors
+              </div>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="progress-item pending-stat">
+              <div class="progress-number" style="color: #909399;">{{progressStats.hasPending || 0}}</div>
+              <div class="progress-label">
+                <i class="el-icon-time" style="color: #909399;"></i>
+                Pending Review
+              </div>
+            </div>
+          </el-col>
+        </el-row>
       </el-card>
 
       <!-- 记录列表和过滤器 -->
@@ -148,21 +187,39 @@
               </el-button>
               <el-button
                 size="small"
-                :type="serverSideFilter === 'pending_any' ? 'warning' : ''"
-                @click="setFilter('pending_any')">
-                Pending ({{pendingCount}})
-              </el-button>
-              <el-button
-                size="small"
-                :type="serverSideFilter === 'needs_review' ? 'warning' : ''"
-                @click="setFilter('needs_review')">
-                Needs Review ({{needsReviewCount}})
-              </el-button>
-              <el-button
-                size="small"
                 :type="serverSideFilter === 'completed' ? 'success' : ''"
                 @click="setFilter('completed')">
-                Completed ({{completedCount}})
+                ✅ Completed ({{progressStats.fullyCompleted || 0}})
+              </el-button>
+              <el-button
+                size="small"
+                :type="serverSideFilter === 'has_errors' ? 'danger' : ''"
+                @click="setFilter('has_errors')">
+                🔴 Errors ({{progressStats.hasErrors || 0}})
+              </el-button>
+              <el-button
+                size="small"
+                :type="serverSideFilter === 'has_warnings' ? 'warning' : ''"
+                @click="setFilter('has_warnings')">
+                ⚠️ Warnings ({{progressStats.hasWarnings || 0}})
+              </el-button>
+              <el-button
+                size="small"
+                :type="serverSideFilter === 'pending_taxonomic' ? 'danger' : ''"
+                @click="setFilter('pending_taxonomic')">
+                ❌ Species Pending ({{progressStats.pendingTaxonomic || 0}})
+              </el-button>
+              <el-button
+                size="small"
+                :type="serverSideFilter === 'pending_locality' ? 'danger' : ''"
+                @click="setFilter('pending_locality')">
+                ❌ Locality Pending ({{progressStats.pendingLocality || 0}})
+              </el-button>
+              <el-button
+                size="small"
+                :type="serverSideFilter === 'pending_record' ? 'danger' : ''"
+                @click="setFilter('pending_record')">
+                ❌ Record Pending ({{progressStats.pendingRecord || 0}})
               </el-button>
             </el-button-group>
           </div>
@@ -211,6 +268,7 @@
           :data="batchRecords"
           v-loading="loadingRecords"
           stripe
+          height="600"
           @row-click="editRecord"
           @selection-change="handleSelectionChange">
 
@@ -219,7 +277,7 @@
             width="55">
           </el-table-column>
 
-          <el-table-column prop="catalogNumber" label="Catalog # (Temp)" width="140">
+          <el-table-column prop="catalogNumber" label="Catalog # (Temp)" width="180">
             <template slot-scope="scope">
               <span class="catalog-number">
                 <span v-if="isTemporaryCatalogNumber(scope.row.catalogNumber)" class="temp-catalog-number">
@@ -228,6 +286,24 @@
                 <span v-else class="normal-catalog-number">
                   {{scope.row.catalogNumber}}
                 </span>
+                <!-- Error icon (severity: error) -->
+                <el-tooltip v-if="hasErrors(scope.row)" placement="top">
+                  <div slot="content">
+                    <div v-for="(error, idx) in getErrors(scope.row)" :key="`error-${idx}`" style="margin: 4px 0;">
+                      🔴 {{ error.message }}
+                    </div>
+                  </div>
+                  <i class="el-icon-close warning-icon" style="color: #F56C6C;"></i>
+                </el-tooltip>
+                <!-- Warning icon (severity: warning) - 即使有errors也显示warnings -->
+                <el-tooltip v-if="hasWarnings(scope.row)" placement="top">
+                  <div slot="content">
+                    <div v-for="(warning, idx) in getWarnings(scope.row)" :key="`warning-${idx}`" style="margin: 4px 0;">
+                      ⚠️ {{ warning.message }}
+                    </div>
+                  </div>
+                  <i class="el-icon-warning warning-icon" style="color: #E6A23C;"></i>
+                </el-tooltip>
               </span>
             </template>
           </el-table-column>
@@ -423,6 +499,7 @@
 
 <script>
 import RecordEditorDialog from '@/components/RecordsProcessor/RecordEditorDialog.vue'
+import request from '@/utils/request'
 import {
   getVerbatimBatches,
   getBatchRecords,
@@ -472,7 +549,13 @@ export default {
         localityPercentage: 0,
         recordPercentage: 0,
         completionPercentage: 0,
-        needsReview: 0
+        needsReview: 0,
+        hasErrors: 0,          // 有errors的记录数
+        hasWarnings: 0,        // 有warnings的记录数
+        hasPending: 0,         // 有pending状态的记录数
+        pendingTaxonomic: 0,   // Species pending的记录数
+        pendingLocality: 0,    // Locality pending的记录数
+        pendingRecord: 0       // Record pending的记录数
       },
 
       // 编辑对话框
@@ -502,6 +585,13 @@ export default {
   },
   async mounted() {
     await this.loadAvailableBatches();
+
+    // 检查 URL 参数中是否有 batchId，如果有则自动选择该批次
+    const batchIdFromQuery = this.$route.query.batchId;
+    if (batchIdFromQuery) {
+      this.selectedBatchId = batchIdFromQuery;
+      await this.selectBatch(batchIdFromQuery);
+    }
   },
   beforeDestroy() {
     if (this.searchTimeout) {
@@ -575,6 +665,9 @@ export default {
 
         // 加载第一页记录
         await this.loadBatchRecords();
+
+        // 获取详细的verification统计 (包括warnings和errors)
+        await this.fetchVerificationSummary();
       } catch (error) {
         this.$message.error('Failed to load batch data');
         console.error(error);
@@ -694,36 +787,36 @@ export default {
       }
     },
 
-    // 更新进度统计
+    // 更新进度统计 - 只更新基础统计，保留详细的验证统计
     updateProgressFromAPI(progress) {
-      this.progressStats = {
-        total: this.currentBatch?.recordCount || progress.taxonomic?.total || 0,
-        speciesVerified: progress.taxonomic?.verified || 0,
-        localityVerified: progress.locality?.verified || 0,
-        recordVerified: progress.record?.verified || 0,
-        fullyCompleted: progress.overall?.completed || 0,
-        speciesPercentage: progress.taxonomic?.percent || 0,
-        localityPercentage: progress.locality?.percent || 0,
-        recordPercentage: progress.record?.percent || 0,
-        completionPercentage: progress.overall?.percent || 0,
-        needsReview: progress.needs_review?.count || 0
-      };
+      // 只更新部分字段，保留 hasErrors, hasWarnings, pendingTaxonomic 等字段
+      this.progressStats.total = this.currentBatch?.recordCount || progress.taxonomic?.total || 0;
+      this.progressStats.speciesVerified = progress.taxonomic?.verified || 0;
+      this.progressStats.localityVerified = progress.locality?.verified || 0;
+      this.progressStats.recordVerified = progress.record?.verified || 0;
+      this.progressStats.fullyCompleted = progress.overall?.completed || 0;
+      this.progressStats.speciesPercentage = progress.taxonomic?.percent || 0;
+      this.progressStats.localityPercentage = progress.locality?.percent || 0;
+      this.progressStats.recordPercentage = progress.record?.percent || 0;
+      this.progressStats.completionPercentage = progress.overall?.percent || 0;
+      this.progressStats.needsReview = progress.needs_review?.count || 0;
+      // 注意：不覆盖 hasErrors, hasWarnings, pendingTaxonomic 等字段
     },
 
     updateProgressFromBatchInfo(progress) {
       if (progress) {
-        this.progressStats = {
-          total: progress.taxonomic?.total || 0,
-          speciesVerified: progress.taxonomic?.verified || 0,
-          localityVerified: progress.locality?.verified || 0,
-          recordVerified: progress.record?.verified || 0,
-          fullyCompleted: progress.overall?.completed || 0,
-          speciesPercentage: progress.taxonomic?.percent || 0,
-          localityPercentage: progress.locality?.percent || 0,
-          recordPercentage: progress.record?.percent || 0,
-          completionPercentage: progress.overall?.percent || 0,
-          needsReview: progress.needs_review?.count || 0
-        };
+        // 只更新部分字段，保留 hasErrors, hasWarnings, pendingTaxonomic 等字段
+        this.progressStats.total = progress.taxonomic?.total || 0;
+        this.progressStats.speciesVerified = progress.taxonomic?.verified || 0;
+        this.progressStats.localityVerified = progress.locality?.verified || 0;
+        this.progressStats.recordVerified = progress.record?.verified || 0;
+        this.progressStats.fullyCompleted = progress.overall?.completed || 0;
+        this.progressStats.speciesPercentage = progress.taxonomic?.percent || 0;
+        this.progressStats.localityPercentage = progress.locality?.percent || 0;
+        this.progressStats.recordPercentage = progress.record?.percent || 0;
+        this.progressStats.completionPercentage = progress.overall?.percent || 0;
+        this.progressStats.needsReview = progress.needs_review?.count || 0;
+        // 注意：不覆盖 hasErrors, hasWarnings, pendingTaxonomic 等字段
       }
     },
 
@@ -952,6 +1045,8 @@ export default {
         if (response.code === 20000) {
           this.$message.success('Taxonomic suggestion applied successfully');
           await this.loadBatchRecords();
+          // 重新获取验证统计信息
+          await this.fetchVerificationSummary();
         }
       } catch (error) {
         this.$message.error('Failed to apply taxonomic suggestion');
@@ -980,6 +1075,8 @@ export default {
           this.$message.success('Record updated successfully');
           this.closeRecordEditor();
           await this.loadBatchRecords();
+          // 重新获取验证统计信息，反映最新的 errors/warnings 数量
+          await this.fetchVerificationSummary();
         }
       } catch (error) {
         this.$message.error('Failed to update record');
@@ -1066,6 +1163,8 @@ export default {
         if (response.code === 20000) {
           this.$message.success(`Batch operation completed for ${response.data.updated_count} records`);
           await this.loadBatchRecords();
+          // 重新获取验证统计信息
+          await this.fetchVerificationSummary();
           this.$refs.recordsTable.clearSelection();
         }
       } catch (error) {
@@ -1170,6 +1269,162 @@ export default {
     formatDateTime(datetime) {
       if (!datetime) return '';
       return new Date(datetime).toLocaleString();
+    },
+
+    // 检查记录是否有 errors (severity: error)
+    hasErrors(record) {
+      if (!record.verificationInfo || !record.verificationInfo.warnings) return false;
+      return record.verificationInfo.warnings.some(w => w.severity === 'error');
+    },
+
+    // 检查记录是否有 warnings (severity: warning)
+    hasWarnings(record) {
+      if (!record.verificationInfo || !record.verificationInfo.warnings) return false;
+      return record.verificationInfo.warnings.some(w => w.severity === 'warning');
+    },
+
+    // 检查记录是否只有 warnings (severity: warning, 没有 error) - 用于只显示warning图标
+    hasWarningsOnly(record) {
+      if (!record.verificationInfo || !record.verificationInfo.warnings) return false;
+      const hasAnyErrors = record.verificationInfo.warnings.some(w => w.severity === 'error');
+      const hasAnyWarnings = record.verificationInfo.warnings.some(w => w.severity === 'warning');
+      return hasAnyWarnings && !hasAnyErrors;
+    },
+
+    // 获取 errors 列表
+    getErrors(record) {
+      if (!record.verificationInfo || !record.verificationInfo.warnings) return [];
+      return record.verificationInfo.warnings.filter(w => w.severity === 'error');
+    },
+
+    // 获取 warnings 列表
+    getWarnings(record) {
+      if (!record.verificationInfo || !record.verificationInfo.warnings) return [];
+      return record.verificationInfo.warnings.filter(w => w.severity === 'warning');
+    },
+
+    // 获取 error 数量
+    getErrorCount(record) {
+      return this.getErrors(record).length;
+    },
+
+    // 获取 warning 数量
+    getWarningCount(record) {
+      return this.getWarnings(record).length;
+    },
+
+    // 导出issues (warnings/errors/all)
+    async exportIssues(issueType) {
+      try {
+        const url = `${process.env.VUE_APP_BASE_API}/api/file-processor/batches/${this.selectedBatchId}/exportIssues?issue_type=${issueType}`;
+
+        // 创建隐藏的下载链接
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `batch_${this.selectedBatchId}_issues_${issueType}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        this.$message.success(`Exporting ${issueType} issues...`);
+      } catch (error) {
+        this.$message.error('Failed to export issues');
+        console.error(error);
+      }
+    },
+
+    // 获取verification统计信息 (调用新API)
+    async fetchVerificationSummary() {
+      if (!this.selectedBatchId) return;
+
+      try {
+        // 使用request模块 (已在文件顶部导入)
+        const response = await request({
+          url: `/file/batches/${this.selectedBatchId}/verificationSummary`,
+          method: 'get'
+        });
+
+        console.log('Verification summary response:', response);
+
+        if (response.code === 20000) {
+          const data = response.data;
+          const stats = data.statistics;
+
+          console.log('Raw statistics from API:', stats);
+
+          // 更新所有统计数据
+          this.progressStats = {
+            total: data.total_records,
+            speciesVerified: stats.species_verified?.count || 0,
+            localityVerified: stats.locality_verified?.count || 0,
+            recordVerified: stats.record_verified?.count || 0,
+            fullyCompleted: stats.fully_verified?.count || 0,
+            speciesPercentage: stats.species_verified?.percentage || 0,
+            localityPercentage: stats.locality_verified?.percentage || 0,
+            recordPercentage: stats.record_verified?.percentage || 0,
+            completionPercentage: stats.fully_verified?.percentage || 0,
+            hasErrors: stats.has_errors?.count || 0,
+            hasWarnings: stats.has_warnings?.count || 0,
+            hasPending: stats.has_pending?.count || 0,
+            pendingTaxonomic: stats.pending_taxonomic?.count || 0,
+            pendingLocality: stats.pending_locality?.count || 0,
+            pendingRecord: stats.pending_record?.count || 0,
+            needsReview: 0  // 保留字段
+          };
+
+          console.log('Updated progressStats:', this.progressStats);
+          console.log('Filter button values:', {
+            hasErrors: this.progressStats.hasErrors,
+            hasWarnings: this.progressStats.hasWarnings,
+            pendingTaxonomic: this.progressStats.pendingTaxonomic,
+            pendingLocality: this.progressStats.pendingLocality,
+            pendingRecord: this.progressStats.pendingRecord
+          });
+        }
+      } catch (error) {
+        console.error('Failed to fetch verification summary:', error);
+      }
+    },
+
+    // 重新验证批次记录
+    async revalidateBatch() {
+      if (!this.selectedBatchId) return;
+
+      this.$confirm('This will re-run validation for all records in this batch. Continue?', 'Re-validate Batch', {
+        confirmButtonText: 'Yes',
+        cancelButtonText: 'Cancel',
+        type: 'info'
+      }).then(async () => {
+        const loading = this.$loading({
+          lock: true,
+          text: 'Re-validating records...',
+          spinner: 'el-icon-loading',
+          background: 'rgba(0, 0, 0, 0.7)'
+        });
+
+        try {
+          const response = await request({
+            url: `/file/batches/${this.selectedBatchId}/revalidate`,
+            method: 'post'
+          });
+
+          loading.close();
+
+          if (response.code === 20000) {
+            this.$message.success(`Re-validated ${response.data.records_validated} records`);
+            // 刷新数据
+            await this.loadBatchData();
+          } else {
+            this.$message.error('Failed to re-validate: ' + response.message);
+          }
+        } catch (error) {
+          loading.close();
+          this.$message.error('Failed to re-validate batch');
+          console.error(error);
+        }
+      }).catch(() => {
+        // 用户取消
+      });
     }
   }
 };
@@ -1372,5 +1627,20 @@ export default {
     width: 100% !important;
     margin-bottom: 10px;
   }
+}
+
+/* Warning icon styling - 简洁的图标显示 */
+.warning-icon {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 14px;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.catalog-number {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 </style>

@@ -4,6 +4,58 @@
 -->
 <template>
   <div class="record-details-editor">
+    <!-- Verification Warnings/Errors Display -->
+    <el-card v-if="hasWarnings || hasErrors" class="warnings-card" shadow="never">
+      <div slot="header" class="warnings-header">
+        <i class="el-icon-warning"></i>
+        <span>Validation Issues</span>
+      </div>
+
+      <div class="warnings-content">
+        <!-- Errors -->
+        <div v-if="errorWarnings.length > 0" class="issue-section error-section">
+          <div class="issue-header">
+            <i class="el-icon-close"></i>
+            <strong>Errors ({{ errorWarnings.length }})</strong>
+          </div>
+          <el-alert
+            v-for="(warning, idx) in errorWarnings"
+            :key="'error-' + idx"
+            :title="warning.message"
+            type="error"
+            :closable="false"
+            show-icon
+            class="issue-item">
+            <div class="issue-details">
+              <el-tag size="mini" type="info">{{ warning.field }}</el-tag>
+              <el-tag size="mini" type="danger">{{ warning.issue_type }}</el-tag>
+            </div>
+          </el-alert>
+        </div>
+
+        <!-- Warnings -->
+        <div v-if="warningWarnings.length > 0" class="issue-section warning-section">
+          <div class="issue-header">
+            <i class="el-icon-warning"></i>
+            <strong>Warnings ({{ warningWarnings.length }})</strong>
+          </div>
+          <el-alert
+            v-for="(warning, idx) in warningWarnings"
+            :key="'warning-' + idx"
+            :title="warning.message"
+            type="warning"
+            :closable="false"
+            show-icon
+            class="issue-item">
+            <div class="issue-details">
+              <el-tag size="mini" type="info">{{ warning.field }}</el-tag>
+              <el-tag size="mini" type="warning">{{ warning.issue_type }}</el-tag>
+            </div>
+          </el-alert>
+        </div>
+      </div>
+    </el-card>
+
     <el-form
       ref="recordForm"
       :model="localRecord"
@@ -274,6 +326,37 @@ export default {
       return recordFields.some(field =>
         this.localRecord[field] !== this.originalRecord[field]
       )
+    },
+
+    // 解析warnings
+    allWarnings() {
+      console.log('RecordDetailsEditor - allWarnings computed:', {
+        record: this.record,
+        verificationInfo: this.record.verificationInfo,
+        warnings: this.record.verificationInfo?.warnings
+      });
+      if (this.record.verificationInfo && this.record.verificationInfo.warnings) {
+        return this.record.verificationInfo.warnings
+      }
+      return []
+    },
+
+    // 按severity分类: errors
+    errorWarnings() {
+      return this.allWarnings.filter(w => w.severity === 'error')
+    },
+
+    // 按severity分类: warnings
+    warningWarnings() {
+      return this.allWarnings.filter(w => w.severity === 'warning')
+    },
+
+    hasWarnings() {
+      return this.warningWarnings.length > 0
+    },
+
+    hasErrors() {
+      return this.errorWarnings.length > 0
     }
   },
   watch: {
@@ -627,6 +710,69 @@ export default {
 </script>
 
 <style scoped>
+.record-details-editor {
+  padding: 20px;
+}
+
+/* Warnings Card */
+.warnings-card {
+  margin-bottom: 20px;
+  border-left: 4px solid #E6A23C;
+}
+
+.warnings-card.has-errors {
+  border-left-color: #F56C6C;
+}
+
+.warnings-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #E6A23C;
+  font-weight: 600;
+}
+
+.warnings-content {
+  padding: 10px 0;
+}
+
+.issue-section {
+  margin-bottom: 20px;
+}
+
+.issue-section:last-child {
+  margin-bottom: 0;
+}
+
+.issue-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 4px;
+}
+
+.error-section .issue-header {
+  background-color: #FEF0F0;
+  color: #F56C6C;
+}
+
+.warning-section .issue-header {
+  background-color: #FDF6EC;
+  color: #E6A23C;
+}
+
+.issue-item {
+  margin-bottom: 10px;
+}
+
+.issue-details {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .record-details-editor {
   padding: 20px;
 }

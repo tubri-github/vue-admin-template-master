@@ -41,7 +41,7 @@
               UNSAVED
             </el-tag>
             <el-tag
-              v-else-if="localRecord.taxonId"
+              v-else-if="localRecord.speciesVerificationStatus === 'verified'"
               type="success"
               size="mini"
               class="ml-2"
@@ -49,7 +49,7 @@
               ✓
             </el-tag>
             <el-tag
-              v-else-if="localRecord.verbatimTaxonomicId"
+              v-else
               type="warning"
               size="mini"
               class="ml-2"
@@ -82,7 +82,7 @@
               UNSAVED
             </el-tag>
             <el-tag
-              v-else-if="localRecord.localityId"
+              v-else-if="localRecord.localityVerificationStatus === 'verified'"
               type="success"
               size="mini"
               class="ml-2"
@@ -90,7 +90,7 @@
               ✓
             </el-tag>
             <el-tag
-              v-else-if="localRecord.verbatimLocalityId"
+              v-else
               type="warning"
               size="mini"
               class="ml-2"
@@ -120,6 +120,22 @@
               class="ml-2 changes-indicator"
             >
               UNSAVED
+            </el-tag>
+            <el-tag
+              v-else-if="localRecord.recordVerificationStatus === 'verified'"
+              type="success"
+              size="mini"
+              class="ml-2"
+            >
+              ✓
+            </el-tag>
+            <el-tag
+              v-else
+              type="warning"
+              size="mini"
+              class="ml-2"
+            >
+              !
             </el-tag>
           </span>
 
@@ -262,6 +278,9 @@ export default {
           localityVerificationStatus: this.getInitialLocalityStatus(),
           recordVerificationStatus: this.getInitialRecordStatus(),
 
+          // 验证警告信息 - 传递给子组件显示
+          verificationInfo: this.record.verificationInfo,
+
           processingStatus: this.record.processingStatus,
           _apiData: apiRecord
         }
@@ -300,21 +319,70 @@ export default {
 
     // 获取初始验证状态的辅助方法
     getInitialSpeciesStatus() {
-      return this.record.verificationInfo?.species?.status ||
-        this.record.processingStatus?.taxonomic ||
-        (this.record.taxonId ? 'verified' : 'pending');
+      console.log('getInitialSpeciesStatus - verificationInfo:', this.record.verificationInfo);
+      console.log('getInitialSpeciesStatus - verificationInfo.species:', this.record.verificationInfo?.species);
+
+      // 优先使用 verification_info 中的状态
+      if (this.record.verificationInfo?.species?.status) {
+        console.log('✓ Using verificationInfo.species.status:', this.record.verificationInfo.species.status);
+        return this.record.verificationInfo.species.status;
+      }
+
+      // 其次使用 processingStatus
+      if (this.record.processingStatus?.taxonomic) {
+        const status = this.record.processingStatus.taxonomic === 'processed' ? 'verified' : 'pending';
+        console.log('✓ Using processingStatus.taxonomic:', this.record.processingStatus.taxonomic, '→', status);
+        return status;
+      }
+
+      // 最后根据是否有 taxonId 判断
+      const fallback = this.record.taxonId ? 'verified' : 'pending';
+      console.log('✓ Using fallback based on taxonId:', this.record.taxonId, '→', fallback);
+      return fallback;
     },
 
     getInitialLocalityStatus() {
-      return this.record.verificationInfo?.locality?.status ||
-        this.record.processingStatus?.locality ||
-        (this.record.localityId ? 'verified' : 'pending');
+      console.log('getInitialLocalityStatus - verificationInfo:', this.record.verificationInfo);
+      console.log('getInitialLocalityStatus - verificationInfo.locality:', this.record.verificationInfo?.locality);
+
+      // 优先使用 verification_info 中的状态
+      if (this.record.verificationInfo?.locality?.status) {
+        console.log('✓ Using verificationInfo.locality.status:', this.record.verificationInfo.locality.status);
+        return this.record.verificationInfo.locality.status;
+      }
+
+      // 其次使用 processingStatus
+      if (this.record.processingStatus?.locality) {
+        const status = this.record.processingStatus.locality === 'processed' ? 'verified' : 'pending';
+        console.log('✓ Using processingStatus.locality:', this.record.processingStatus.locality, '→', status);
+        return status;
+      }
+
+      // 最后根据是否有 localityId 判断
+      const fallback = this.record.localityId ? 'verified' : 'pending';
+      console.log('✓ Using fallback based on localityId:', this.record.localityId, '→', fallback);
+      return fallback;
     },
 
     getInitialRecordStatus() {
-      return this.record.verificationInfo?.record?.status ||
-        this.record.processingStatus?.record ||
-        'verified';
+      console.log('getInitialRecordStatus - verificationInfo:', this.record.verificationInfo);
+      console.log('getInitialRecordStatus - verificationInfo.record:', this.record.verificationInfo?.record);
+
+      // 优先使用 verification_info 中的状态
+      if (this.record.verificationInfo?.record?.status) {
+        console.log('✓ Using verificationInfo.record.status:', this.record.verificationInfo.record.status);
+        return this.record.verificationInfo.record.status;
+      }
+
+      // 其次使用 processingStatus
+      if (this.record.processingStatus?.record) {
+        console.log('✓ Using processingStatus.record:', this.record.processingStatus.record);
+        return this.record.processingStatus.record;
+      }
+
+      // 默认 pending (保持一致性)
+      console.log('✓ Using default: pending');
+      return 'pending';
     },
 
     // 处理物种选择
