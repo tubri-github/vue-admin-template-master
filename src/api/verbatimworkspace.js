@@ -160,8 +160,8 @@ export function getVerbatimStatistics(params = {}) {
 }
 export function applyTaxonomicSuggestion(record_id) {
   return request({
-    url: api_prefix + `/records/${record_id}/apply-suggestion `,
-    method: 'get',
+    url: api_prefix + `/records/${record_id}/apply-suggestion`,
+    method: 'post',
   })
 }
 

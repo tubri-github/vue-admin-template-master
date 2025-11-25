@@ -537,29 +537,6 @@ export default {
           console.warn('Failed to parse verbatim date:', error)
         }
       }
-
-      // 如果没有提供FieldNo，尝试生成一个建议值
-      if (!this.localityData.FieldNo && this.verbatimData.locality_string) {
-        const suggestion = this.generateFieldNoSuggestion()
-        this.localityData.FieldNo = suggestion
-      }
-    },
-
-    // 生成FieldNo建议
-    generateFieldNoSuggestion() {
-      const parts = [
-        this.verbatimData.country,
-        this.verbatimData.state,
-        this.verbatimData.county
-      ].filter(Boolean)
-
-      if (parts.length > 0) {
-        const prefix = parts.join('_').replace(/[^a-zA-Z0-9]/g, '').substring(0, 20)
-        const timestamp = Date.now().toString().slice(-6)
-        return `${prefix}_${timestamp}`
-      }
-
-      return `LOC_${Date.now().toString().slice(-8)}`
     },
 
     // 获取 verbatim 摘要

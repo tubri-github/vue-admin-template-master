@@ -364,16 +364,17 @@
                   ID: {{scope.row.taxonomic.TaxonID}}
                 </div>
               </div>
-              <!-- 显示建议的物种 -->
+              <!-- 显示建议的物种（仅当species未verified时显示Apply按钮） -->
               <div v-else-if="scope.row.suggestedTaxonomic" class="suggested-species">
-                <div class="suggested-text">
-                  {{scope.row.suggestedTaxonomic.FullName}}
+                <div class="suggested-text-wrapper">
+                  <span class="suggested-species-name">{{scope.row.suggestedTaxonomic.FullName}}</span>
                   <el-button
-                    type="text"
+                    v-if="getSpeciesVerificationStatus(scope.row) !== 'verified'"
+                    type="success"
                     size="mini"
-                    @click.stop="applySuggestion(scope.row)"
-                    style="color: #409EFF;">
-                    Apply
+                    :loading="applyingRecordId === scope.row.id"
+                    @click.stop="applySuggestion(scope.row)">
+                    <span v-if="applyingRecordId !== scope.row.id">Apply</span>
                   </el-button>
                 </div>
                 <div class="text-xs text-gray-500">
@@ -508,7 +509,6 @@ import {
   exportBatchResults,
   markBatchCompleted,
   confirmBatchImport,
-  applyTaxonomicSuggestion,
   batchUpdateVerificationStatus
 } from '@/api/verbatimworkspace'
 
@@ -567,7 +567,10 @@ export default {
       showBatchConfirmDialog: false,
       batchActionType: '',
       batchActionText: '',
-      performingBatchAction: false
+      performingBatchAction: false,
+
+      // Apply suggestion loading state
+      applyingRecordId: null
     }
   },
   computed: {
@@ -1040,17 +1043,56 @@ export default {
 
     // 应用分类建议
     async applySuggestion(record) {
+      // 检查是否有建议的物种信息
+      if (!record.suggestedTaxonomic || !record.suggestedTaxonomic.TaxonID) {
+        this.$message.warning('No taxonomic suggestion available');
+        return;
+      }
+
+      // 设置loading状态
+      this.applyingRecordId = record.id;
+
       try {
-        const response = await applyTaxonomicSuggestion(record.id);
+        // 构建更新数据，与 RecordEditorDialog 的保存逻辑一致
+        const updateData = {
+          id: record.id,
+          taxon_id: record.suggestedTaxonomic.TaxonID,
+          species_verification_status: 'verified',
+          verification_notes: 'Applied taxonomic suggestion from workspace'
+        };
+
+        const response = await updateVerbatimRecord(updateData);
         if (response.code === 20000) {
-          this.$message.success('Taxonomic suggestion applied successfully');
-          await this.loadBatchRecords();
-          // 重新获取验证统计信息
-          await this.fetchVerificationSummary();
+          // 直接更新当前行的数据，无需刷新整个列表
+          record.taxonId = record.suggestedTaxonomic.TaxonID;
+          record.taxonomic = {
+            TaxonID: record.suggestedTaxonomic.TaxonID,
+            FullName: record.suggestedTaxonomic.FullName,
+            Family: record.suggestedTaxonomic.Family,
+            Genus: record.suggestedTaxonomic.Genus,
+            Species: record.suggestedTaxonomic.Species,
+            Author: record.suggestedTaxonomic.Author
+          };
+          // 更新验证状态
+          if (record.verificationInfo) {
+            record.verificationInfo.species = {
+              ...record.verificationInfo.species,
+              status: 'verified'
+            };
+          }
+          if (record.processingStatus) {
+            record.processingStatus.taxonomic = 'verified';
+          }
+
+          this.$message.success('Taxonomic suggestion applied');
+          // 异步更新统计信息，不阻塞UI
+          this.fetchVerificationSummary();
         }
       } catch (error) {
         this.$message.error('Failed to apply taxonomic suggestion');
         console.error(error);
+      } finally {
+        this.applyingRecordId = null;
       }
     },
 
@@ -1540,8 +1582,20 @@ export default {
   color: #333;
 }
 
+.suggested-text-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.suggested-species-name {
+  color: #E6A23C;
+  font-style: italic;
+  font-weight: 500;
+}
+
 .suggested-text {
-  color: #409EFF;
+  color: #E6A23C;
   font-style: italic;
 }
 
