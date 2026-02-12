@@ -1223,7 +1223,7 @@ export default {
       try {
         const response = await exportBatchResults(this.selectedBatchId);
 
-        const blob = new Blob([response], {
+        const blob = new Blob([response.data], {
           type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         });
         const url = window.URL.createObjectURL(blob);
