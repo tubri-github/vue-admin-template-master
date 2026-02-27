@@ -396,7 +396,7 @@ export default {
         this.originalRecord = { ...this.localRecord };
 
         console.log('RecordDetailsEditor initialized localRecord:', this.localRecord);
-        
+
         // 在下一个tick清除初始化标志
         this.$nextTick(() => {
           this.isInitializing = false;

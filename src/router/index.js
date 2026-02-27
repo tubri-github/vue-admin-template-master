@@ -182,6 +182,21 @@ export const asyncRoutes = [
   },
 
   {
+    path: '/synonym-review',
+    component: Layout,
+    name: 'SynonymReview',
+    meta: { title: 'Synonym Review', icon: 'tree', roles: ['admin'] },
+    children: [
+      {
+        path: 'index',
+        name: 'SynonymReviewPage',
+        component: () => import('@/views/synonymReview/index'),
+        meta: { title: 'Taxon Synonym Review', icon: 'tree' }
+      }
+    ]
+  },
+
+  {
     path: '/fileprocessor',
     component: Layout,
     name: 'FileProcessor',
