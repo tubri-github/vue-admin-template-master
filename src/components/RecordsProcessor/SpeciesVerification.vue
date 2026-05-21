@@ -39,6 +39,59 @@
       </div>
     </el-card>
 
+    <!-- Family-only 建议展示 -->
+    <el-card v-if="isFamilyOnlyRecord" class="family-suggestion-card">
+      <div slot="header" class="card-header">
+        <span><i class="el-icon-collection-tag" /> Family Suggestion</span>
+        <el-tag :type="familyOnly.existsInDb ? 'success' : 'warning'" size="small">
+          {{ familyOnly.existsInDb ? 'Family in DB' : 'Family not in DB' }}
+        </el-tag>
+      </div>
+
+      <div class="suggestion-content">
+        <div class="suggestion-info">
+          <div class="suggestion-name">{{ familyOnly.verbatimFamilyName }}</div>
+          <div class="suggestion-details">
+            <span v-if="familyOnly.existsInDb" class="detail-item">FamilyID: {{ familyOnly.matchedFamilyId }}</span>
+            <span class="detail-item">Verbatim has family only — no genus/species to match</span>
+          </div>
+          <div class="suggestion-actions">
+            <template v-if="familyOnly.existsInDb">
+              <el-button
+                v-if="!isFamilyApplied"
+                type="primary"
+                size="small"
+                :loading="applyingFamily"
+                @click="applyFamilySuggestion"
+              >
+                <i class="el-icon-check" />
+                Apply
+              </el-button>
+              <template v-else>
+                <el-button type="success" size="small" disabled>
+                  <i class="el-icon-check" />
+                  Applied
+                </el-button>
+                <el-button
+                  type="text"
+                  size="small"
+                  class="cancel-link"
+                  :loading="cancellingFamily"
+                  @click="cancelFamilySuggestion"
+                >
+                  Cancel
+                </el-button>
+              </template>
+            </template>
+            <span v-else class="family-not-in-db-hint">
+              <i class="el-icon-warning-outline" />
+              Family name not found in DB. Correct the spelling, or use "Create New Species" below to add a new family + species.
+            </span>
+          </div>
+        </div>
+      </div>
+    </el-card>
+
     <!-- 系统建议展示 -->
     <el-card v-if="hasValidSuggestion" class="suggestion-card">
       <div slot="header" class="card-header">
@@ -53,19 +106,36 @@
           <div class="suggestion-name">{{ getSuggestedSpeciesName() }}</div>
           <div class="suggestion-details">
             <span class="detail-item">ID: {{ getSuggestedTaxonId() }}</span>
+            <span v-if="getSuggestedFamily()" class="detail-item">Family: {{ getSuggestedFamily() }}</span>
             <span class="detail-item">Confidence: {{ matchSuggestions.confidence }}%</span>
             <span class="detail-item">Type: {{ matchSuggestions.status }}</span>
           </div>
           <div class="suggestion-actions">
             <el-button
+              v-if="!isSystemSuggestionApplied"
               type="primary"
               size="small"
-              :disabled="matchSuggestions.suggestionApplied"
+              :loading="applyingSuggestion"
               @click="applySuggestion"
             >
               <i class="el-icon-check" />
-              {{ matchSuggestions.suggestionApplied ? 'Applied' : 'Apply Suggestion' }}
+              Apply Suggestion
             </el-button>
+            <template v-else>
+              <el-button type="success" size="small" disabled>
+                <i class="el-icon-check" />
+                Applied
+              </el-button>
+              <el-button
+                type="text"
+                size="small"
+                :loading="cancellingSuggestion"
+                class="cancel-link"
+                @click="cancelSuggestion"
+              >
+                Cancel
+              </el-button>
+            </template>
           </div>
         </div>
       </div>
@@ -87,10 +157,19 @@
 
       <div v-if="currentMatchedSpecies" class="current-match">
         <div class="match-info">
-          <div class="match-name">{{ currentMatchedSpecies.FullName }}</div>
+          <div class="match-name">
+            <template v-if="isFamilyLevelMatch">
+              Family: {{ currentMatchedSpecies.Family }}
+              <el-tag size="mini" type="info" class="match-level-tag">Family-level</el-tag>
+            </template>
+            <template v-else>
+              {{ currentMatchedSpecies.FullName }}
+              <el-tag size="mini" type="success" class="match-level-tag">Genus + Species</el-tag>
+            </template>
+          </div>
           <div class="match-details">
             <span class="detail-item">ID: {{ currentMatchedSpecies.TaxonID }}</span>
-            <span v-if="currentMatchedSpecies.Family" class="detail-item">Family: {{ currentMatchedSpecies.Family }}</span>
+            <span v-if="!isFamilyLevelMatch && currentMatchedSpecies.Family" class="detail-item">Family: {{ currentMatchedSpecies.Family }}</span>
             <span v-if="currentMatchedSpecies.Author" class="detail-item">Author: {{ currentMatchedSpecies.Author }}</span>
           </div>
         </div>
@@ -107,8 +186,9 @@
       <div slot="header" class="card-header">
         <span><i class="el-icon-search" /> Search Species</span>
         <el-button
-          size="mini"
-          type="success"
+          size="medium"
+          type="primary"
+          class="create-species-cta"
           @click="showCreateSpeciesDialog"
         >
           <i class="el-icon-plus" />
@@ -222,7 +302,7 @@
     >
 
       <create-species-form
-        :verbatim-data="verbatimData"
+        :verbatim-data="enhancedVerbatimData"
         @submit="handleCreateSpecies"
         @cancel="showCreateDialog = false"
       />
@@ -233,6 +313,7 @@
 <script>
 import CreateSpeciesForm from '@/components/RecordsProcessor/CreateSpeciesForm.vue'
 import { addTaxon, getTaxon } from '@/api/table'
+import { updateVerbatimRecord, applyFamilyTaxon } from '@/api/verbatimworkspace'
 
 export default {
   name: 'SpeciesVerification',
@@ -249,6 +330,10 @@ export default {
       default: null
     },
     matchSuggestions: {
+      type: Object,
+      default: null
+    },
+    familyOnly: {
       type: Object,
       default: null
     }
@@ -271,6 +356,16 @@ export default {
       // 对话框
       showCreateDialog: false,
 
+      // Family-only Apply 状态
+      familyApplied: false,
+      applyingFamily: false,
+      cancellingFamily: false,
+
+      // System Suggestion Apply 本地状态（覆盖 prop）
+      suggestionAppliedLocal: null,
+      applyingSuggestion: false,
+      cancellingSuggestion: false,
+
       // 去抖计时器
       searchDebouncer: null
     }
@@ -287,6 +382,50 @@ export default {
       return this.matchSuggestions &&
         this.matchSuggestions.hasSuggestion &&
         this.getSuggestedTaxonId()
+    },
+
+    // 是否是 family-only 记录（verbatim 只有 family，没 genus/species）
+    isFamilyOnlyRecord() {
+      return !!(this.familyOnly && this.familyOnly.isFamilyOnly)
+    },
+
+    // System Suggestion 是否已应用（本地状态优先于 prop）
+    isSystemSuggestionApplied() {
+      if (this.suggestionAppliedLocal !== null) return this.suggestionAppliedLocal
+      return !!(this.matchSuggestions && this.matchSuggestions.suggestionApplied)
+    },
+
+    // 当前 currentMatchedSpecies 是否是 family-level 匹配（FamilyID 设了，Genus/Species 都空）
+    isFamilyLevelMatch() {
+      const t = this.currentMatchedSpecies
+      if (!t) return false
+      const hasFamily = !!t.Family
+      const noGenus = !t.Genus || String(t.Genus).trim() === ''
+      const noSpecies = !t.Species || String(t.Species).trim() === ''
+      return hasFamily && noGenus && noSpecies
+    },
+
+    // Family 是否已应用（本地状态优先；否则看记录是否已绑定 family-level taxon）
+    isFamilyApplied() {
+      if (this.familyApplied) return true
+      // 重新进入对话框时根据 record.taxonomic 判定：FamilyID 设了但 Genus/Species 为空
+      const t = this.record && this.record.taxonomic
+      if (!t || !t.TaxonID) return false
+      const hasFamily = !!t.Family
+      const noGenus = !t.Genus || String(t.Genus).trim() === ''
+      const noSpecies = !t.Species || String(t.Species).trim() === ''
+      return hasFamily && noGenus && noSpecies
+    },
+
+    // 给 CreateSpeciesForm 用的增强 verbatim 数据（带 familyId 用于预填）
+    enhancedVerbatimData() {
+      if (!this.verbatimData && !this.familyOnly) return null
+      const base = this.verbatimData ? { ...this.verbatimData } : {}
+      if (this.familyOnly && this.familyOnly.existsInDb) {
+        base.familyId = this.familyOnly.matchedFamilyId
+        base.familyName = this.familyOnly.verbatimFamilyName
+      }
+      return base
     },
 
     // 当前匹配的物种信息
@@ -408,19 +547,70 @@ export default {
       return 'info'
     },
 
-    // 应用系统建议
-    applySuggestion() {
-      if (this.hasValidSuggestion) {
-        const suggestedTaxon = {
-          TaxonID: this.getSuggestedTaxonId(),
-          FullName: this.getSuggestedSpeciesName(),
-          Family: this.getSuggestedFamily(),
-          Genus: this.getSuggestedGenus(),
-          Species: this.getSuggestedSpecies(),
-          Author: this.getSuggestedAuthor()
-        }
+    // 应用系统建议（一键 apply + save）
+    async applySuggestion() {
+      if (!this.hasValidSuggestion) return
 
-        this.confirmMatch(suggestedTaxon)
+      const suggestedTaxon = {
+        TaxonID: this.getSuggestedTaxonId(),
+        FullName: this.getSuggestedSpeciesName(),
+        Family: this.getSuggestedFamily(),
+        Genus: this.getSuggestedGenus(),
+        Species: this.getSuggestedSpecies(),
+        Author: this.getSuggestedAuthor()
+      }
+
+      this.applyingSuggestion = true
+      try {
+        const response = await updateVerbatimRecord({
+          id: this.record.id,
+          taxon_id: suggestedTaxon.TaxonID,
+          species_verification_status: 'verified',
+          verification_notes: 'Applied taxonomic suggestion from edit dialog'
+        })
+        if (response.code === 20000) {
+          this.suggestionAppliedLocal = true
+          this.$emit('species-saved', {
+            taxonomic: suggestedTaxon,
+            speciesVerificationStatus: 'verified'
+          })
+          this.$message.success('Suggestion applied and saved')
+        } else {
+          this.$message.error('Failed to save suggestion')
+        }
+      } catch (error) {
+        this.$message.error('Failed to apply suggestion')
+        console.error(error)
+      } finally {
+        this.applyingSuggestion = false
+      }
+    },
+
+    // 取消系统建议（clear + save）
+    async cancelSuggestion() {
+      this.cancellingSuggestion = true
+      try {
+        const response = await updateVerbatimRecord({
+          id: this.record.id,
+          taxon_id: null,
+          species_verification_status: 'pending',
+          verification_notes: 'Cancelled taxonomic suggestion from edit dialog'
+        })
+        if (response.code === 20000) {
+          this.suggestionAppliedLocal = false
+          this.$emit('species-saved', {
+            taxonomic: null,
+            speciesVerificationStatus: 'pending'
+          })
+          this.$message.success('Suggestion cancelled')
+        } else {
+          this.$message.error('Failed to cancel suggestion')
+        }
+      } catch (error) {
+        this.$message.error('Failed to cancel suggestion')
+        console.error(error)
+      } finally {
+        this.cancellingSuggestion = false
       }
     },
 
@@ -495,6 +685,71 @@ export default {
     // 显示创建物种对话框
     showCreateSpeciesDialog() {
       this.showCreateDialog = true
+    },
+
+    // Family-only 场景：把 family-level taxon 应用到记录（一键 find-or-create + apply + save）
+    async applyFamilySuggestion() {
+      if (!this.familyOnly || !this.familyOnly.matchedFamilyId) return
+
+      this.applyingFamily = true
+      try {
+        const response = await applyFamilyTaxon(this.record.id, this.familyOnly.matchedFamilyId)
+        if (response.code === 20000) {
+          const data = response.data
+          this.familyApplied = true
+          this.$emit('species-saved', {
+            taxonomic: {
+              TaxonID: data.taxon_id,
+              FullName: data.full_scientific_name,
+              Family: data.family_name,
+              Genus: null,
+              Species: null,
+              Author: null
+            },
+            speciesVerificationStatus: 'verified'
+          })
+          this.$message.success(
+            data.was_created
+              ? 'Family-level taxon created and applied'
+              : 'Family-level taxon applied'
+          )
+        } else {
+          this.$message.error(response.message || 'Failed to apply family')
+        }
+      } catch (error) {
+        this.$message.error('Failed to apply family')
+        console.error(error)
+      } finally {
+        this.applyingFamily = false
+      }
+    },
+
+    // 取消 family 应用（清 taxon_id + save，逻辑同 cancelSuggestion）
+    async cancelFamilySuggestion() {
+      this.cancellingFamily = true
+      try {
+        const response = await updateVerbatimRecord({
+          id: this.record.id,
+          taxon_id: null,
+          species_verification_status: 'pending',
+          verification_notes: 'Cancelled family-level taxon from edit dialog'
+        })
+        if (response.code === 20000) {
+          this.familyApplied = false
+          this.$emit('species-saved', {
+            taxonomic: null,
+            speciesVerificationStatus: 'pending'
+          })
+          this.$message.info('Family suggestion cancelled')
+        } else {
+          this.$message.error('Failed to cancel family')
+        }
+      } catch (error) {
+        this.$message.error('Failed to cancel family')
+        console.error(error)
+      } finally {
+        this.cancellingFamily = false
+      }
     },
 
     // 处理创建新物种
@@ -588,6 +843,50 @@ export default {
 /* 建议卡片样式 */
 .suggestion-card {
   border: 2px solid #409EFF;
+}
+
+/* Family 建议卡片样式 */
+.family-suggestion-card {
+  border: 2px solid #E6A23C;
+}
+
+.family-not-in-db-hint {
+  display: inline-block;
+  font-size: 13px;
+  color: #b88230;
+  background: #fdf6ec;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid #faecd8;
+}
+
+.match-level-tag {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.cancel-link {
+  margin-left: 8px;
+  color: #f56c6c !important;
+}
+
+.cancel-link:hover {
+  color: #f78989 !important;
+  text-decoration: underline;
+}
+
+.family-not-in-db-hint i {
+  margin-right: 4px;
+}
+
+/* 突出 Create New Species 按钮 */
+.create-species-cta {
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.25);
+}
+
+.create-species-cta i {
+  margin-right: 4px;
 }
 
 .suggestion-content {

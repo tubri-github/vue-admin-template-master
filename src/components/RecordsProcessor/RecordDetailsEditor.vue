@@ -138,30 +138,13 @@
                 placeholder="Select jar size"
                 @change="handleFieldChange"
                 clearable
+                filterable
                 class="w-full">
-                <el-option label="Unknown" value="Unknown"></el-option>
-                <el-option label="0.5L" value="0.5L"></el-option>
-                <el-option label="0.75L" value="0.75L"></el-option>
-                <el-option label="1.0L" value="1.0L"></el-option>
-                <el-option label="1L" value="1L"></el-option>
-                <el-option label="2L" value="2L"></el-option>
-                <el-option label="3L" value="3L"></el-option>
-                <el-option label="1oz" value="1oz"></el-option>
-                <el-option label="2oz" value="2oz"></el-option>
-                <el-option label="4oz" value="4oz"></el-option>
-                <el-option label="8oz" value="8oz"></el-option>
-                <el-option label="12oz" value="12oz"></el-option>
-                <el-option label="16oz" value="16oz"></el-option>
-                <el-option label="32oz" value="32oz"></el-option>
-                <el-option label="64oz" value="64oz"></el-option>
-                <el-option label="1gal" value="1gal"></el-option>
-                <el-option label="2 gal Jug" value="2 gal Jug"></el-option>
-                <el-option label="3 gal Jug" value="3 gal Jug"></el-option>
-                <el-option label="5 gal Jug" value="5 gal Jug"></el-option>
-                <el-option label="Steel Tank" value="Steel Tank"></el-option>
-                <el-option label="vial" value="vial"></el-option>
-                <el-option label="Titan Bin" value="Titan Bin"></el-option>
-                <el-option label="Multiple Jars <see remarks>" value="Multiple Jars <see remarks>"></el-option>
+                <el-option
+                  v-for="item in jarSizeTypeOptions"
+                  :key="item.JarSizeID"
+                  :label="item.JarSize"
+                  :value="item.JarSize" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -292,6 +275,8 @@
 </template>
 
 <script>
+import { getJarSizes } from '@/api/table'
+
 export default {
   name: 'RecordDetailsEditor',
   props: {
@@ -306,6 +291,7 @@ export default {
       originalRecord: {},
       saving: false,
       isInitializing: false, // 标志防止用户操作时被watch覆盖
+      jarSizeTypeOptions: [],
 
       // 表单验证规则
       formRules: {
@@ -315,6 +301,9 @@ export default {
         ]
       }
     }
+  },
+  created() {
+    this.loadJarSizes()
   },
   computed: {
     hasRecordChanges() {
@@ -405,6 +394,21 @@ export default {
     }
   },
   methods: {
+    // 从后端拉 JarSize 选项（与 lotform / Loan 等其他下拉保持单一数据源）
+    async loadJarSizes() {
+      try {
+        const response = await getJarSizes()
+        if (response && response.data && response.data.items) {
+          this.jarSizeTypeOptions = response.data.items.map(item => ({
+            JarSizeID: item.JarSizeID,
+            JarSize: item.JarSize
+          }))
+        }
+      } catch (error) {
+        console.error('Failed to load jar sizes:', error)
+      }
+    },
+
     // 获取初始验证状态 - 从父组件传递的数据中获取
     getInitialSpeciesStatus(record) {
       return record.verificationInfo?.species?.status ||

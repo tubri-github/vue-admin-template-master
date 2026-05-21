@@ -293,6 +293,14 @@ export default {
           filters: this.getColumnFilters('start_date')
         },
         {
+          prop: 'verbatim_collectors',
+          label: 'Collectors',
+          sortable: false,
+          align: 'left',
+          width: '180',
+          filters: this.getColumnFilters('verbatim_collectors')
+        },
+        {
           prop: 'country',
           label: 'Country',
           sortable: false,
@@ -350,14 +358,6 @@ export default {
           tag: true,
           filters: this.getColumnFilters('inventory')
         },
-        {
-          prop: 'verbatim_collectors',
-          label: 'Collectors',
-          sortable: false,
-          align: 'left',
-          width: '180',
-          filters: this.getColumnFilters('verbatim_collectors')
-        }
       ]
 
       return defaultColumns

@@ -198,6 +198,15 @@ export default {
         this.speciesData.Species = this.verbatimData.species.toLowerCase()
       }
 
+      // 如果上游已经查到 FamilyID（family-only 场景），预填 family 选择器
+      if (this.verbatimData.familyId) {
+        this.speciesData.familyID = this.verbatimData.familyId
+        this.familyOptions = [{
+          FamilyID: this.verbatimData.familyId,
+          FamilyName: this.verbatimData.familyName || this.verbatimData.family || ''
+        }]
+      }
+
       // 更新全名
       this.updateFullName()
     },

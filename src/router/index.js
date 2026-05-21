@@ -41,7 +41,7 @@ export const constantRoutes = [
     path: '/auth/callback',
     component: () => import('@/views/auth/callback'),
     hidden: true,
-    meta: { 
+    meta: {
       skipAuth: true  // 标记此路由跳过认证检查
     }
   },
@@ -120,6 +120,20 @@ export const asyncRoutes = [
             meta: { title: 'Basic Search', icon: 'form' }
           }
         ]
+      },
+      {
+        path: 'lot-main',
+        name: 'LotMain',
+        component: () => import('@/views/Lot/index'),
+        meta: { title: 'Lot Main', icon: 'form' },
+        hidden: true
+      },
+      {
+        path: 'lot-search-old',
+        name: 'LotSearchOld',
+        component: () => import('@/views/Lot/LotSearch/index'),
+        meta: { title: 'Lot Search Old', icon: 'form' },
+        hidden: true
       }
     ]
   },
@@ -141,6 +155,13 @@ export const asyncRoutes = [
         name: 'SearchLocality',
         component: () => import('@/views/Locality/LocalitySearch/Search'),
         meta: { title: 'Search', icon: 'form' }
+      },
+      {
+        path: 'es-search',
+        name: 'ESSearchLocality',
+        component: () => import('@/views/Locality/search'),
+        meta: { title: 'ES Search', icon: 'search' },
+        hidden: true
       }
     ]
   },

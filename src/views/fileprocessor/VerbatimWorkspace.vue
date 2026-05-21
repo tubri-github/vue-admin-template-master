@@ -228,7 +228,8 @@
         <!-- 搜索和操作栏 -->
         <div class="table-toolbar">
           <el-row :gutter="20">
-            <el-col :span="12">
+            <!-- 全局 search 框暂时停用，按列搜索请用下方 Add filter -->
+            <el-col v-if="false" :span="12">
               <el-input
                 v-model="searchText"
                 @input="onSearchChange"
@@ -238,7 +239,7 @@
                 clearable>
               </el-input>
             </el-col>
-            <el-col :span="12" class="text-right">
+            <el-col :span="24" class="text-right">
               <el-dropdown @command="handleBatchAction" style="margin-right: 10px;">
                 <el-button>
                   Batch Actions <i class="el-icon-arrow-down el-icon--right"></i>
@@ -258,6 +259,15 @@
                 <i class="el-icon-check"></i>
                 Mark Batch Completed
               </el-button>
+            </el-col>
+          </el-row>
+          <el-row :gutter="20" class="field-filters-row">
+            <el-col :span="24">
+              <field-filter-chips
+                :value="serverSideFieldFilters"
+                :field-options="fieldFilterOptions"
+                @input="onFieldFiltersChange"
+              />
             </el-col>
           </el-row>
         </div>
@@ -341,25 +351,51 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="Verbatim Species" width="200">
+          <el-table-column label="Verbatim Family" width="140">
             <template slot-scope="scope">
-              <div v-if="scope.row.verbatimTaxonomic">
-                <div class="verbatim-text">
-                  {{scope.row.verbatimTaxonomic.verbatimFamily}}
-                  {{scope.row.verbatimTaxonomic.verbatimGenus}}
-                  {{scope.row.verbatimTaxonomic.verbatimSpecies}}
-                </div>
-              </div>
+              <span v-if="scope.row.verbatimTaxonomic && scope.row.verbatimTaxonomic.verbatimFamily" class="verbatim-text">
+                {{scope.row.verbatimTaxonomic.verbatimFamily}}
+              </span>
               <span v-else class="text-gray-400">-</span>
             </template>
           </el-table-column>
 
-          <el-table-column label="Matched Species" width="250">
+          <el-table-column label="Verbatim Genus" width="140">
+            <template slot-scope="scope">
+              <span v-if="scope.row.verbatimTaxonomic && scope.row.verbatimTaxonomic.verbatimGenus" class="verbatim-text">
+                {{scope.row.verbatimTaxonomic.verbatimGenus}}
+              </span>
+              <span v-else class="text-gray-400">-</span>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="Verbatim Species" width="140">
+            <template slot-scope="scope">
+              <span v-if="scope.row.verbatimTaxonomic && scope.row.verbatimTaxonomic.verbatimSpecies" class="verbatim-text">
+                {{scope.row.verbatimTaxonomic.verbatimSpecies}}
+              </span>
+              <span v-else class="text-gray-400">-</span>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="Matched Species" width="260">
             <template slot-scope="scope">
               <div v-if="scope.row.taxonomic">
-                <div class="matched-text">
-                  {{scope.row.taxonomic.FullName}}
-                </div>
+                <template v-if="isFamilyLevelTaxon(scope.row.taxonomic)">
+                  <div class="matched-text">
+                    Family: {{scope.row.taxonomic.Family}}
+                    <el-tag size="mini" type="info" class="match-level-tag">Family-level</el-tag>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="matched-text">
+                    {{scope.row.taxonomic.FullName}}
+                    <el-tag size="mini" type="success" class="match-level-tag">Genus + Species</el-tag>
+                  </div>
+                  <div v-if="scope.row.taxonomic.Family" class="text-xs text-gray-500">
+                    Family: {{scope.row.taxonomic.Family}}
+                  </div>
+                </template>
                 <div class="text-xs text-gray-500">
                   ID: {{scope.row.taxonomic.TaxonID}}
                 </div>
@@ -377,8 +413,30 @@
                     <span v-if="applyingRecordId !== scope.row.id">Apply</span>
                   </el-button>
                 </div>
+                <div v-if="scope.row.suggestedTaxonomic.Family" class="text-xs text-gray-500">
+                  Family: {{scope.row.suggestedTaxonomic.Family}}
+                </div>
                 <div class="text-xs text-gray-500">
                   Suggested ID: {{scope.row.suggestedTaxonomic.TaxonID}}
+                </div>
+              </div>
+              <!-- Family-only 记录：verbatim 只有 family，没 genus/species -->
+              <div v-else-if="scope.row.familyOnly && scope.row.familyOnly.isFamilyOnly" class="family-only">
+                <el-tag v-if="scope.row.familyOnly.existsInDb" size="mini" type="info">
+                  <i class="el-icon-info" />
+                  Family in DB
+                </el-tag>
+                <el-tag v-else size="mini" type="warning">
+                  <i class="el-icon-warning" />
+                  Family not in DB
+                </el-tag>
+                <div class="text-xs text-gray-500" style="margin-top: 4px;">
+                  {{scope.row.familyOnly.verbatimFamilyName}}
+                  <span v-if="scope.row.familyOnly.existsInDb"> (FamilyID: {{scope.row.familyOnly.matchedFamilyId}})</span>
+                </div>
+                <div class="text-xs text-gray-400">
+                  <span v-if="scope.row.familyOnly.existsInDb">Pick or create a species under this family</span>
+                  <span v-else>Create family + species, or correct the spelling</span>
                 </div>
               </div>
               <span v-else class="text-gray-400">Not matched</span>
@@ -476,6 +534,7 @@
       :record="editingRecord"
       @close="closeRecordEditor"
       @save="handleRecordSave"
+      @partial-saved="handlePartialSaved"
     />
 
     <!-- 批量操作确认对话框 -->
@@ -500,6 +559,7 @@
 
 <script>
 import RecordEditorDialog from '@/components/RecordsProcessor/RecordEditorDialog.vue'
+import FieldFilterChips from '@/components/FieldFilterChips/index.vue'
 import request from '@/utils/request'
 import {
   getVerbatimBatches,
@@ -515,7 +575,8 @@ import {
 export default {
   name: 'VerbatimWorkspace',
   components: {
-    RecordEditorDialog
+    RecordEditorDialog,
+    FieldFilterChips
   },
   data() {
     return {
@@ -533,6 +594,33 @@ export default {
       // 服务器端过滤和搜索
       serverSideFilter: 'all',
       serverSideSearch: '',
+      serverSideFieldFilters: {}, // {field_key: [val1, val2, ...]}
+      fieldFilterOptions: [
+        { key: 'catalog_number', label: 'Catalog #' },
+        { key: 'verbatim_field_number', label: 'Verbatim Field #' },
+        { key: 'matched_field_number', label: 'Matched Field #' },
+        { key: 'verbatim_family', label: 'Verbatim Family' },
+        { key: 'verbatim_genus', label: 'Verbatim Genus' },
+        { key: 'verbatim_species', label: 'Verbatim Species' },
+        { key: 'matched_family', label: 'Matched Family' },
+        { key: 'matched_genus', label: 'Matched Genus' },
+        { key: 'matched_species', label: 'Matched Species' },
+        { key: 'suggested_family', label: 'Suggested Family' },
+        { key: 'suggested_genus', label: 'Suggested Genus' },
+        { key: 'suggested_species', label: 'Suggested Species' },
+        { key: 'verbatim_locality_string', label: 'Verbatim Locality' },
+        { key: 'matched_locality', label: 'Matched Locality' },
+        { key: 'verbatim_country', label: 'Verbatim Country' },
+        { key: 'verbatim_state', label: 'Verbatim State' },
+        { key: 'verbatim_county', label: 'Verbatim County' },
+        { key: 'verbatim_drainage', label: 'Verbatim Drainage' },
+        { key: 'verbatim_waterbody', label: 'Verbatim Waterbody' },
+        { key: 'verbatim_collector', label: 'Verbatim Collector' },
+        { key: 'storage', label: 'Storage' },
+        { key: 'jar_size', label: 'Jar Size' },
+        { key: 'prev_number', label: 'Prev Number' },
+        { key: 'remarks', label: 'Remarks' }
+      ],
       searchText: '',
       searchTimeout: null,
       currentPage: 1,
@@ -607,6 +695,15 @@ export default {
       return catalogNumber && catalogNumber.toString().startsWith('TEMP_');
     },
 
+    // 判断 matched/suggested taxonomic 是否是 family-level（有 Family，Genus/Species 为空）
+    isFamilyLevelTaxon(t) {
+      if (!t) return false;
+      const hasFamily = !!t.Family;
+      const noGenus = !t.Genus || String(t.Genus).trim() === '';
+      const noSpecies = !t.Species || String(t.Species).trim() === '';
+      return hasFamily && noGenus && noSpecies;
+    },
+
     // 加载可用批次列表
     async loadAvailableBatches() {
       this.loadingBatch = true;
@@ -649,6 +746,7 @@ export default {
       this.serverSideSearch = '';
       this.serverSideFilter = 'all';
       this.searchText = '';
+      this.serverSideFieldFilters = {};
 
       try {
         // 获取批次基本信息
@@ -691,7 +789,8 @@ export default {
           page: this.currentPage,
           page_size: this.pageSize,
           status: this.serverSideFilter === 'all' ? undefined : this.serverSideFilter,
-          search: this.serverSideSearch
+          search: this.serverSideSearch,
+          field_filters: this.serverSideFieldFilters
         });
 
         if (recordsResponse.code === 20000) {
@@ -772,6 +871,13 @@ export default {
                 Author: record.match_suggestions.taxonomic.suggested_data.author
               } : null,
 
+              familyOnly: record.match_suggestions?.taxonomic?.family_only ? {
+                isFamilyOnly: record.match_suggestions.taxonomic.family_only.is_family_only,
+                verbatimFamilyName: record.match_suggestions.taxonomic.family_only.verbatim_family_name,
+                matchedFamilyId: record.match_suggestions.taxonomic.family_only.matched_family_id,
+                existsInDb: record.match_suggestions.taxonomic.family_only.exists_in_db
+              } : null,
+
               verificationInfo: record.verification_info || null,
               processingStatus: record.processing_status,
               _apiData: record
@@ -850,6 +956,13 @@ export default {
       this.serverSideSearch = '';
       this.currentPage = 1;
       this.loadBatchRecords();
+    },
+
+    // chip 增删 / 清空触发
+    async onFieldFiltersChange(next) {
+      this.serverSideFieldFilters = next || {};
+      this.currentPage = 1;
+      await this.loadBatchRecords();
     },
 
     // 分页处理
@@ -1107,6 +1220,30 @@ export default {
     closeRecordEditor() {
       this.showRecordEditor = false;
       this.editingRecord = null;
+    },
+
+    // 子组件已直接持久化（Apply/Cancel suggestion）：仅同步本地行 + 刷新统计，不关闭对话框
+    handlePartialSaved(payload) {
+      const target = this.batchRecords.find(r => r.id === payload.recordId);
+      if (target) {
+        target.taxonId = payload.taxonId;
+        target.taxonomic = payload.taxonomic;
+        if (target.verificationInfo) {
+          target.verificationInfo.species = {
+            ...target.verificationInfo.species,
+            status: payload.speciesVerificationStatus
+          };
+        }
+        if (target.processingStatus) {
+          target.processingStatus.taxonomic = payload.speciesVerificationStatus === 'verified' ? 'processed' : 'pending';
+        }
+      }
+      // 同步保持 editingRecord 与列表一致
+      if (this.editingRecord && this.editingRecord.id === payload.recordId) {
+        this.editingRecord.taxonId = payload.taxonId;
+        this.editingRecord.taxonomic = payload.taxonomic;
+      }
+      this.fetchVerificationSummary();
     },
 
     // 处理记录保存
@@ -1553,6 +1690,10 @@ export default {
   padding: 15px;
 }
 
+.field-filters-row {
+  margin-top: 12px;
+}
+
 .status-column {
   display: flex;
   flex-direction: column;
@@ -1580,6 +1721,11 @@ export default {
 .matched-text {
   font-weight: 500;
   color: #333;
+}
+
+.match-level-tag {
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 .suggested-text-wrapper {

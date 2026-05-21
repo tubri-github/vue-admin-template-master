@@ -18,15 +18,27 @@ export function getBatchInfo(batchSerialId) {
 }
 
 export function getBatchRecords(batchSerialId, params = {}) {
+  const query = {
+    page: params.page || 1,
+    page_size: params.page_size || 25,
+    status: params.status,
+    search: params.search
+  }
+  // field_filters: 只在非空对象时序列化为 JSON
+  if (params.field_filters && typeof params.field_filters === 'object') {
+    const cleaned = {}
+    Object.keys(params.field_filters).forEach(k => {
+      const vals = params.field_filters[k]
+      if (Array.isArray(vals) && vals.length > 0) cleaned[k] = vals
+    })
+    if (Object.keys(cleaned).length > 0) {
+      query.field_filters = JSON.stringify(cleaned)
+    }
+  }
   return request({
     url: api_prefix + `/batches/${batchSerialId}/records`,
     method: 'get',
-    params: {
-      page: params.page || 1,
-      page_size: params.page_size || 25,
-      status: params.status,
-      search: params.search
-    }
+    params: query
   })
 }
 export function markBatchCompleted(batchSerialId) {
@@ -162,6 +174,14 @@ export function applyTaxonomicSuggestion(record_id) {
   return request({
     url: api_prefix + `/records/${record_id}/apply-suggestion`,
     method: 'post',
+  })
+}
+
+export function applyFamilyTaxon(record_id, family_id) {
+  return request({
+    url: api_prefix + `/records/${record_id}/apply-family-taxon`,
+    method: 'post',
+    data: { family_id }
   })
 }
 

@@ -63,7 +63,9 @@
             :record="localRecord"
             :verbatim-data="verbatimTaxonomic"
             :match-suggestions="matchSuggestions"
+            :family-only="familyOnly"
             @species-selected="handleSpeciesSelected"
+            @species-saved="handleSpeciesSaved"
             @create-new-species="handleCreateNewSpecies"
           />
         </el-tab-pane>
@@ -207,6 +209,7 @@ export default {
       verbatimTaxonomic: null,
       verbatimLocality: null,
       matchSuggestions: null,
+      familyOnly: null,
       saving: false,
       hasLoaded: false
     }
@@ -299,6 +302,7 @@ export default {
 
         // 提取匹配建议信息
         this.matchSuggestions = this.record.matchSuggestions
+        this.familyOnly = this.record.familyOnly || null
 
         // 保存原始记录用于变更追踪
         this.originalRecord = { ...this.localRecord }
@@ -409,6 +413,30 @@ export default {
       // 自动设置species验证状态为verified
       this.localRecord.speciesVerificationStatus = 'verified'
       this.$message.success(`Species matched: ${taxon.FullName}`)
+    },
+
+    // 物种 Apply / Cancel 已直接持久化：同步 localRecord 和 originalRecord，向上抛事件
+    handleSpeciesSaved(payload) {
+      const taxon = payload.taxonomic
+      if (taxon && taxon.TaxonID) {
+        this.localRecord.taxonId = taxon.TaxonID
+        this.localRecord.taxonomic = { ...taxon }
+      } else {
+        this.localRecord.taxonId = null
+        this.localRecord.taxonomic = null
+      }
+      this.localRecord.speciesVerificationStatus = payload.speciesVerificationStatus
+
+      // 同步 originalRecord，让 hasSpeciesChanges 重置为 false（不会再提示"未保存"）
+      this.originalRecord = { ...this.originalRecord, ...this.localRecord }
+
+      // 通知父组件（VerbatimWorkspace）刷新行 + 统计
+      this.$emit('partial-saved', {
+        recordId: this.localRecord.id,
+        taxonomic: this.localRecord.taxonomic,
+        taxonId: this.localRecord.taxonId,
+        speciesVerificationStatus: this.localRecord.speciesVerificationStatus
+      })
     },
 
     // 处理创建新物种
