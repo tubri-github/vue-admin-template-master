@@ -85,7 +85,17 @@
             </template>
             <span v-else class="family-not-in-db-hint">
               <i class="el-icon-warning-outline" />
-              Family name not found in DB. Correct the spelling, or use "Create New Species" below to add a new family + species.
+              Family "<b>{{ familyOnly.verbatimFamilyName }}</b>" not found in DB.
+              <br>
+              <el-button
+                type="primary"
+                size="small"
+                style="margin-top: 8px"
+                @click="openAddFamilyDialog"
+              >
+                <i class="el-icon-plus" /> Add as new Family
+              </el-button>
+              <span class="hint-or">or correct the spelling above</span>
             </span>
           </div>
         </div>
@@ -243,11 +253,18 @@
             <div class="result-content">
               <div class="result-name">
                 <span class="full-name">{{ species.FullScientificName }}</span>
+                <el-tag
+                  v-if="isFamilyLevel(species)"
+                  size="mini"
+                  type="info"
+                  class="result-level-tag"
+                >Family-level</el-tag>
               </div>
 
               <div class="result-details">
                 <span v-if="species.FamilyName" class="detail">Family: {{ species.FamilyName }}</span>
-                <span class="detail">ID: {{ species.TaxonID }}</span>
+                <span v-if="species.TaxonID != null" class="detail">ID: {{ species.TaxonID }}</span>
+                <span v-else class="detail virtual-tag">Will be created on Select</span>
               </div>
 
               <div class="result-actions">
@@ -307,13 +324,63 @@
         @cancel="showCreateDialog = false"
       />
     </el-dialog>
+
+    <!-- 新建 Family 对话框 -->
+    <el-dialog
+      title="Add New Family"
+      :visible.sync="showAddFamilyDialog"
+      width="440px"
+      :append-to-body="true"
+      :close-on-click-modal="false"
+    >
+      <el-form
+        ref="addFamilyForm"
+        :model="newFamilyForm"
+        :rules="addFamilyRules"
+        label-width="120px"
+        size="small"
+      >
+        <el-form-item label="Family Name" prop="family_name">
+          <el-input
+            v-model="newFamilyForm.family_name"
+            placeholder="e.g., Cyprinidae"
+            clearable
+          />
+        </el-form-item>
+        <el-form-item label="Family Number">
+          <el-input
+            v-model="newFamilyForm.family_number"
+            placeholder="Optional (reviewer-only reference)"
+            clearable
+          />
+        </el-form-item>
+        <el-form-item label="Alias2">
+          <el-input
+            v-model="newFamilyForm.alias2"
+            placeholder="Optional"
+            clearable
+          />
+        </el-form-item>
+      </el-form>
+      <div slot="footer">
+        <el-button size="small" @click="showAddFamilyDialog = false">Cancel</el-button>
+        <el-button
+          type="primary"
+          size="small"
+          :loading="creatingFamily"
+          @click="submitNewFamily"
+        >
+          Create
+        </el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script>
 import CreateSpeciesForm from '@/components/RecordsProcessor/CreateSpeciesForm.vue'
 import { addTaxon, getTaxon } from '@/api/table'
-import { updateVerbatimRecord, applyFamilyTaxon } from '@/api/verbatimworkspace'
+import { updateVerbatimRecord, applyFamilyTaxon, createFamily } from '@/api/verbatimworkspace'
 
 export default {
   name: 'SpeciesVerification',
@@ -367,7 +434,22 @@ export default {
       cancellingSuggestion: false,
 
       // 去抖计时器
-      searchDebouncer: null
+      searchDebouncer: null,
+
+      // 新建 Family 对话框
+      showAddFamilyDialog: false,
+      creatingFamily: false,
+      newFamilyForm: {
+        family_name: '',
+        family_number: '',
+        alias2: ''
+      },
+      addFamilyRules: {
+        family_name: [
+          { required: true, message: 'Family name is required', trigger: 'blur' },
+          { min: 2, max: 100, message: '2-100 characters', trigger: 'blur' }
+        ]
+      }
     }
   },
   computed: {
@@ -662,8 +744,24 @@ export default {
       this.selectedSpecies = species
     },
 
+    // 判断搜索结果中某条是否是 family-level（Genus/Species 都空 + 有 FamilyName）
+    // 同时覆盖两种来源：TaxonomicTable 里的 family-level 占位行，以及
+    // 后端 Family 表兜底返回的虚拟项（TaxonID 为 null）
+    isFamilyLevel(species) {
+      const noGenus = !species.Genus || String(species.Genus).trim() === ''
+      const noSpecies = !species.Species || String(species.Species).trim() === ''
+      return !!species.FamilyName && noGenus && noSpecies
+    },
+
     // 确认匹配
-    confirmMatch(species) {
+    // 后端 Family 表兜底返回的虚拟项 TaxonID 为 null，走 applyFamilyTaxon
+    // 自动 find-or-create 占位 taxon；普通 taxon 项走原有 species-selected 流程。
+    async confirmMatch(species) {
+      if (species.TaxonID == null) {
+        await this.applyVirtualFamily(species)
+        return
+      }
+
       const taxonomicData = {
         TaxonID: species.TaxonID,
         FullName: species.FullScientificName || species.FullName,
@@ -675,6 +773,43 @@ export default {
 
       this.$emit('species-selected', taxonomicData)
       this.selectedSpecies = species
+    },
+
+    // 虚拟 family-level 项：调用后端 apply_family_taxon，自动建占位 taxon
+    async applyVirtualFamily(species) {
+      if (!species.FamilyID) {
+        this.$message.error('Missing FamilyID for family-level entry')
+        return
+      }
+
+      try {
+        const response = await applyFamilyTaxon(this.record.id, species.FamilyID)
+        if (response.code === 20000) {
+          const data = response.data
+          this.$emit('species-saved', {
+            taxonomic: {
+              TaxonID: data.taxon_id,
+              FullName: data.full_scientific_name,
+              Family: data.family_name,
+              Genus: null,
+              Species: null,
+              Author: null
+            },
+            speciesVerificationStatus: 'verified'
+          })
+          this.selectedSpecies = species
+          this.$message.success(
+            data.was_created
+              ? 'Family-level taxon created and applied'
+              : 'Family-level taxon applied'
+          )
+        } else {
+          this.$message.error(response.message || 'Failed to apply family')
+        }
+      } catch (error) {
+        this.$message.error('Failed to apply family')
+        console.error(error)
+      }
     },
 
     // 清除匹配
@@ -722,6 +857,58 @@ export default {
       } finally {
         this.applyingFamily = false
       }
+    },
+
+    // 打开"新建 Family"对话框，预填 verbatim 的 family 名
+    openAddFamilyDialog() {
+      this.newFamilyForm = {
+        family_name: (this.familyOnly && this.familyOnly.verbatimFamilyName) || '',
+        family_number: '',
+        alias2: ''
+      }
+      this.showAddFamilyDialog = true
+      // 下一个 tick 清空校验残留
+      this.$nextTick(() => {
+        if (this.$refs.addFamilyForm) this.$refs.addFamilyForm.clearValidate()
+      })
+    },
+
+    // 提交新 Family：调后端 createFamily，成功后 emit family-created 给父组件
+    submitNewFamily() {
+      this.$refs.addFamilyForm.validate(async(valid) => {
+        if (!valid) return
+        this.creatingFamily = true
+        try {
+          const response = await createFamily({
+            family_name: this.newFamilyForm.family_name.trim(),
+            family_number: this.newFamilyForm.family_number ? this.newFamilyForm.family_number.trim() : null,
+            alias2: this.newFamilyForm.alias2 ? this.newFamilyForm.alias2.trim() : null
+          })
+          if (response.code === 20000) {
+            this.$emit('family-created', {
+              familyId: response.data.family_id,
+              familyName: response.data.family_name
+            })
+            this.$message.success(`Family "${response.data.family_name}" created`)
+            this.showAddFamilyDialog = false
+          } else if (response.code === 40900) {
+            // 已存在 — 也算成功，直接用现有的
+            this.$emit('family-created', {
+              familyId: response.data.family_id,
+              familyName: response.data.family_name
+            })
+            this.$message.info(response.message || 'Family already exists, using existing one')
+            this.showAddFamilyDialog = false
+          } else {
+            this.$message.error(response.message || 'Failed to create family')
+          }
+        } catch (error) {
+          this.$message.error('Failed to create family')
+          console.error(error)
+        } finally {
+          this.creatingFamily = false
+        }
+      })
     },
 
     // 取消 family 应用（清 taxon_id + save，逻辑同 cancelSuggestion）
@@ -879,6 +1066,13 @@ export default {
   margin-right: 4px;
 }
 
+.hint-or {
+  margin-left: 12px;
+  color: #b88230;
+  font-size: 12px;
+  vertical-align: middle;
+}
+
 /* 突出 Create New Species 按钮 */
 .create-species-cta {
   font-weight: 600;
@@ -1029,6 +1223,18 @@ export default {
   border-radius: 3px;
   font-size: 12px;
   color: #666;
+}
+
+.virtual-tag {
+  background: #fdf6ec !important;
+  color: #b88230 !important;
+  border: 1px solid #faecd8;
+  font-style: italic;
+}
+
+.result-level-tag {
+  margin-left: 8px;
+  vertical-align: middle;
 }
 
 .result-actions {

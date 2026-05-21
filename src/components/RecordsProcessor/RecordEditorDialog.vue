@@ -67,6 +67,7 @@
             @species-selected="handleSpeciesSelected"
             @species-saved="handleSpeciesSaved"
             @create-new-species="handleCreateNewSpecies"
+            @family-created="handleFamilyCreated"
           />
         </el-tab-pane>
 
@@ -437,6 +438,24 @@ export default {
         taxonId: this.localRecord.taxonId,
         speciesVerificationStatus: this.localRecord.speciesVerificationStatus
       })
+    },
+
+    // verbatim 的 family 在 Family 表里没有，用户点 "Add as new Family" 创建后
+    // 子组件 emit 此事件 —— 我们更新 familyOnly 让 Apply 按钮可用
+    handleFamilyCreated({ familyId, familyName }) {
+      if (!this.familyOnly) {
+        this.familyOnly = {
+          isFamilyOnly: true,
+          verbatimFamilyName: familyName,
+          matchedFamilyId: familyId,
+          existsInDb: true
+        }
+      } else {
+        // 用 $set 保证 Vue 2 响应式
+        this.$set(this.familyOnly, 'matchedFamilyId', familyId)
+        this.$set(this.familyOnly, 'existsInDb', true)
+        // verbatimFamilyName 不动（用户可能改了拼写但保留原始 verbatim 显示）
+      }
     },
 
     // 处理创建新物种

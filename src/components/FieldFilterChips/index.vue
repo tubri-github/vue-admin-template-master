@@ -29,7 +29,14 @@
               />
             </el-select>
           </el-form-item>
-          <el-form-item label="Value (substring match)">
+          <el-form-item label="Match">
+            <el-select v-model="draftMode" class="w-full">
+              <el-option label="Contains value" value="contains" />
+              <el-option label="Is empty" value="empty" />
+              <el-option label="Has value (not empty)" value="not_empty" />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="draftMode === 'contains'" label="Value (substring match)">
             <el-input
               ref="valueInput"
               v-model="draftValue"
@@ -63,10 +70,11 @@
       class="filter-chip"
       closable
       size="small"
-      type="info"
+      :type="getChipTagType(chip.value)"
       @close="removeChip(chip)"
     >
-      <strong>{{ getFieldLabel(chip.field) }}:</strong> {{ chip.value }}
+      <strong>{{ getFieldLabel(chip.field) }}</strong>
+      {{ getChipValueLabel(chip.value) }}
     </el-tag>
 
     <el-button
@@ -100,7 +108,10 @@ export default {
     return {
       popoverVisible: false,
       draftField: '',
-      draftValue: ''
+      draftValue: '',
+      draftMode: 'contains', // 'contains' | 'empty' | 'not_empty'
+      EMPTY_SENTINEL: '__EMPTY__',
+      NOT_EMPTY_SENTINEL: '__NOT_EMPTY__'
     }
   },
   computed: {
@@ -116,7 +127,9 @@ export default {
       return list
     },
     canAdd() {
-      return !!this.draftField && (this.draftValue || '').trim() !== ''
+      if (!this.draftField) return false
+      if (this.draftMode === 'empty' || this.draftMode === 'not_empty') return true
+      return (this.draftValue || '').trim() !== ''
     }
   },
   methods: {
@@ -124,10 +137,28 @@ export default {
       const opt = this.fieldOptions.find(o => o.key === key)
       return opt ? opt.label : key
     },
+    // chip 显示文字：sentinel 翻译成可读的 "is empty" / "is not empty"
+    getChipValueLabel(val) {
+      if (val === this.EMPTY_SENTINEL) return 'is empty'
+      if (val === this.NOT_EMPTY_SENTINEL) return 'is not empty'
+      return ': ' + val
+    },
+    // sentinel chip 用不同颜色区分（视觉上一眼看出是"空"过滤）
+    getChipTagType(val) {
+      if (val === this.EMPTY_SENTINEL || val === this.NOT_EMPTY_SENTINEL) return 'warning'
+      return 'info'
+    },
     addChip() {
       if (!this.canAdd) return
       const field = this.draftField
-      const value = this.draftValue.trim()
+      let value
+      if (this.draftMode === 'empty') {
+        value = this.EMPTY_SENTINEL
+      } else if (this.draftMode === 'not_empty') {
+        value = this.NOT_EMPTY_SENTINEL
+      } else {
+        value = this.draftValue.trim()
+      }
       const next = { ...(this.value || {}) }
       const list = next[field] ? [...next[field]] : []
       // 同字段同值不重复
@@ -136,6 +167,10 @@ export default {
       this.$emit('input', next)
       // 留住 field 方便连续加同字段多个值；只清值
       this.draftValue = ''
+      // sentinel 加完后切回 contains，避免误连加多个 sentinel
+      if (this.draftMode !== 'contains') {
+        this.draftMode = 'contains'
+      }
       this.$nextTick(() => {
         if (this.$refs.valueInput) this.$refs.valueInput.focus()
       })
@@ -159,6 +194,7 @@ export default {
     resetDraft() {
       this.draftField = ''
       this.draftValue = ''
+      this.draftMode = 'contains'
     }
   }
 }

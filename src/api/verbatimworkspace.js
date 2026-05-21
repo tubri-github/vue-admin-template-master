@@ -185,6 +185,15 @@ export function applyFamilyTaxon(record_id, family_id) {
   })
 }
 
+// 新建 Family 记录（family_name 必填，family_number/alias2 选填）
+export function createFamily(payload) {
+  return request({
+    url: '/taxon/family',
+    method: 'post',
+    data: payload
+  })
+}
+
 // 确认批次导入，生成正式的catalog number
 export function confirmBatchImport(batchSerialId) {
   return request({
