@@ -64,10 +64,12 @@
             :verbatim-data="verbatimTaxonomic"
             :match-suggestions="matchSuggestions"
             :family-only="familyOnly"
+            :manually-created-family="manuallyCreatedFamily"
             @species-selected="handleSpeciesSelected"
             @species-saved="handleSpeciesSaved"
             @create-new-species="handleCreateNewSpecies"
             @family-created="handleFamilyCreated"
+            @manually-created-family-cancel="handleManuallyCreatedFamilyCancel"
           />
         </el-tab-pane>
 
@@ -211,6 +213,7 @@ export default {
       verbatimLocality: null,
       matchSuggestions: null,
       familyOnly: null,
+      manuallyCreatedFamily: null,  // 用户从 SpeciesVerification 加的新 family，独立于 familyOnly
       saving: false,
       hasLoaded: false
     }
@@ -440,22 +443,20 @@ export default {
       })
     },
 
-    // verbatim 的 family 在 Family 表里没有，用户点 "Add as new Family" 创建后
-    // 子组件 emit 此事件 —— 我们更新 familyOnly 让 Apply 按钮可用
+    // 用户在 Species Verification 创建了新 Family。
+    // 不动 familyOnly（那是 verbatim 自动匹配的，需要保留作为对照），
+    // 单独存到 manuallyCreatedFamily，子组件渲染独立的"Newly Created"卡。
+    // 这样 reviewer 能同时看见两条线索：自动匹配的 vs 自己加的。
     handleFamilyCreated({ familyId, familyName }) {
-      if (!this.familyOnly) {
-        this.familyOnly = {
-          isFamilyOnly: true,
-          verbatimFamilyName: familyName,
-          matchedFamilyId: familyId,
-          existsInDb: true
-        }
-      } else {
-        // 用 $set 保证 Vue 2 响应式
-        this.$set(this.familyOnly, 'matchedFamilyId', familyId)
-        this.$set(this.familyOnly, 'existsInDb', true)
-        // verbatimFamilyName 不动（用户可能改了拼写但保留原始 verbatim 显示）
+      this.manuallyCreatedFamily = {
+        familyId,
+        familyName
       }
+    },
+
+    // 用户取消新建 family 卡（清掉，不会影响 verbatim suggestion 卡）
+    handleManuallyCreatedFamilyCancel() {
+      this.manuallyCreatedFamily = null
     },
 
     // 处理创建新物种

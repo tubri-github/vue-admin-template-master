@@ -42,7 +42,7 @@
     <!-- Family-only 建议展示 -->
     <el-card v-if="isFamilyOnlyRecord" class="family-suggestion-card">
       <div slot="header" class="card-header">
-        <span><i class="el-icon-collection-tag" /> Family Suggestion</span>
+        <span><i class="el-icon-collection-tag" /> Family Suggestion (from Verbatim)</span>
         <el-tag :type="familyOnly.existsInDb ? 'success' : 'warning'" size="small">
           {{ familyOnly.existsInDb ? 'Family in DB' : 'Family not in DB' }}
         </el-tag>
@@ -97,6 +97,59 @@
               </el-button>
               <span class="hint-or">or correct the spelling above</span>
             </span>
+          </div>
+        </div>
+      </div>
+    </el-card>
+
+    <!-- 用户在本面板新建的 Family，独立于 verbatim 自动匹配的 -->
+    <el-card v-if="manuallyCreatedFamily" class="manual-family-card">
+      <div slot="header" class="card-header">
+        <span><i class="el-icon-plus" /> Newly Created Family</span>
+        <el-tag type="warning" size="small">Added in this session</el-tag>
+      </div>
+      <div class="suggestion-content">
+        <div class="suggestion-info">
+          <div class="suggestion-name">{{ manuallyCreatedFamily.familyName }}</div>
+          <div class="suggestion-details">
+            <span class="detail-item">FamilyID: {{ manuallyCreatedFamily.familyId }}</span>
+            <span class="detail-item">Created via reviewer "Add New Family"</span>
+          </div>
+          <div class="suggestion-actions">
+            <el-button
+              v-if="!isManualFamilyApplied"
+              type="primary"
+              size="small"
+              :loading="applyingManualFamily"
+              @click="applyManuallyCreatedFamily"
+            >
+              <i class="el-icon-check" />
+              Apply
+            </el-button>
+            <template v-else>
+              <el-button type="success" size="small" disabled>
+                <i class="el-icon-check" />
+                Applied
+              </el-button>
+              <el-button
+                type="text"
+                size="small"
+                class="cancel-link"
+                :loading="cancellingManualFamily"
+                @click="cancelManuallyCreatedFamilyApply"
+              >
+                Cancel
+              </el-button>
+            </template>
+            <el-button
+              v-if="!isManualFamilyApplied"
+              type="text"
+              size="small"
+              class="cancel-link"
+              @click="dismissManuallyCreatedFamily"
+            >
+              Dismiss
+            </el-button>
           </div>
         </div>
       </div>
@@ -195,15 +248,25 @@
     <el-card class="search-card">
       <div slot="header" class="card-header">
         <span><i class="el-icon-search" /> Search Species</span>
-        <el-button
-          size="medium"
-          type="primary"
-          class="create-species-cta"
-          @click="showCreateSpeciesDialog"
-        >
-          <i class="el-icon-plus" />
-          Create New Species
-        </el-button>
+        <div class="header-actions">
+          <el-button
+            size="medium"
+            class="add-family-cta"
+            @click="openAddFamilyDialog(searchQuery && searchQuery.trim() ? searchQuery.trim() : null)"
+          >
+            <i class="el-icon-collection-tag" />
+            Add New Family
+          </el-button>
+          <el-button
+            size="medium"
+            type="primary"
+            class="create-species-cta"
+            @click="showCreateSpeciesDialog"
+          >
+            <i class="el-icon-plus" />
+            Create New Species
+          </el-button>
+        </div>
       </div>
 
       <!-- 搜索输入 -->
@@ -403,6 +466,12 @@ export default {
     familyOnly: {
       type: Object,
       default: null
+    },
+    // 用户在本面板里 "Add New Family" 创建的新 family（独立于 verbatim 自动匹配的）
+    // 形如 { familyId, familyName }
+    manuallyCreatedFamily: {
+      type: Object,
+      default: null
     }
   },
   data() {
@@ -449,7 +518,12 @@ export default {
           { required: true, message: 'Family name is required', trigger: 'blur' },
           { min: 2, max: 100, message: '2-100 characters', trigger: 'blur' }
         ]
-      }
+      },
+
+      // "Newly Created Family" 卡的 Apply / Cancel 本地状态
+      manualFamilyAppliedLocal: false,
+      applyingManualFamily: false,
+      cancellingManualFamily: false
     }
   },
   computed: {
@@ -485,6 +559,20 @@ export default {
       const noGenus = !t.Genus || String(t.Genus).trim() === ''
       const noSpecies = !t.Species || String(t.Species).trim() === ''
       return hasFamily && noGenus && noSpecies
+    },
+
+    // 用户新建的 family 是否已 Apply（用本地状态 + record 状态结合判断）
+    // 本地标记优先；否则看 record 当前绑定的 taxon 是否就是这个新 family 的占位
+    isManualFamilyApplied() {
+      if (this.manualFamilyAppliedLocal) return true
+      const t = this.record && this.record.taxonomic
+      if (!t || !t.TaxonID || !this.manuallyCreatedFamily) return false
+      // family-level 占位的特征：Genus/Species 都空
+      const noGenus = !t.Genus || String(t.Genus).trim() === ''
+      const noSpecies = !t.Species || String(t.Species).trim() === ''
+      // 显示名通常等于 FamilyName
+      const sameName = (t.Family || t.FullName || '') === this.manuallyCreatedFamily.familyName
+      return noGenus && noSpecies && sameName
     },
 
     // Family 是否已应用（本地状态优先；否则看记录是否已绑定 family-level taxon）
@@ -859,10 +947,89 @@ export default {
       }
     },
 
-    // 打开"新建 Family"对话框，预填 verbatim 的 family 名
-    openAddFamilyDialog() {
+    // 把 "Newly Created Family" 卡里那个 family 应用到记录
+    async applyManuallyCreatedFamily() {
+      if (!this.manuallyCreatedFamily || !this.manuallyCreatedFamily.familyId) return
+      this.applyingManualFamily = true
+      try {
+        const response = await applyFamilyTaxon(this.record.id, this.manuallyCreatedFamily.familyId)
+        if (response.code === 20000) {
+          const data = response.data
+          this.manualFamilyAppliedLocal = true
+          this.$emit('species-saved', {
+            taxonomic: {
+              TaxonID: data.taxon_id,
+              FullName: data.full_scientific_name,
+              Family: data.family_name,
+              Genus: null,
+              Species: null,
+              Author: null
+            },
+            speciesVerificationStatus: 'verified'
+          })
+          this.$message.success(
+            data.was_created
+              ? 'Family-level taxon created and applied'
+              : 'Family-level taxon applied'
+          )
+        } else {
+          this.$message.error(response.message || 'Failed to apply family')
+        }
+      } catch (error) {
+        this.$message.error('Failed to apply family')
+        console.error(error)
+      } finally {
+        this.applyingManualFamily = false
+      }
+    },
+
+    // 撤回 "Newly Created Family" 的 Apply（clear taxon_id + save）
+    async cancelManuallyCreatedFamilyApply() {
+      this.cancellingManualFamily = true
+      try {
+        const response = await updateVerbatimRecord({
+          id: this.record.id,
+          taxon_id: null,
+          species_verification_status: 'pending',
+          verification_notes: 'Cancelled newly-created family apply'
+        })
+        if (response.code === 20000) {
+          this.manualFamilyAppliedLocal = false
+          this.$emit('species-saved', {
+            taxonomic: null,
+            speciesVerificationStatus: 'pending'
+          })
+          this.$message.info('Family apply cancelled')
+        } else {
+          this.$message.error('Failed to cancel')
+        }
+      } catch (error) {
+        this.$message.error('Failed to cancel')
+        console.error(error)
+      } finally {
+        this.cancellingManualFamily = false
+      }
+    },
+
+    // 把整个 "Newly Created Family" 卡去掉（用户决定不用这个新 family 了）
+    // 不影响数据库——Family 记录已经创建了，只是不再显示这张卡
+    dismissManuallyCreatedFamily() {
+      this.manualFamilyAppliedLocal = false
+      this.$emit('manually-created-family-cancel')
+    },
+
+    // 打开"新建 Family"对话框。预填优先级：
+    //   显式传入的 prefillName > 当前搜索框内容 > verbatim 的 family 名 > 空
+    // 调用点：
+    //   - family-not-in-db 提示按钮：无参，走 verbatim 兜底
+    //   - Search Species header 按钮：传搜索框内容，覆盖 verbatim 兜底
+    openAddFamilyDialog(prefillName) {
+      let initialName = prefillName
+      if (!initialName && this.familyOnly && this.familyOnly.verbatimFamilyName) {
+        initialName = this.familyOnly.verbatimFamilyName
+      }
       this.newFamilyForm = {
-        family_name: (this.familyOnly && this.familyOnly.verbatimFamilyName) || '',
+        family_name: initialName || '',
         family_number: '',
         alias2: ''
       }
@@ -1037,6 +1204,12 @@ export default {
   border: 2px solid #E6A23C;
 }
 
+/* 用户新建的 Family 卡（视觉上区别于 verbatim 自动匹配的 suggestion 卡） */
+.manual-family-card {
+  border: 2px dashed #67C23A;
+  background: #f6fef0;
+}
+
 .family-not-in-db-hint {
   display: inline-block;
   font-size: 13px;
@@ -1073,6 +1246,12 @@ export default {
   vertical-align: middle;
 }
 
+/* 头部右侧按钮组 */
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
 /* 突出 Create New Species 按钮 */
 .create-species-cta {
   font-weight: 600;
@@ -1080,6 +1259,10 @@ export default {
 }
 
 .create-species-cta i {
+  margin-right: 4px;
+}
+
+.add-family-cta i {
   margin-right: 4px;
 }
 
