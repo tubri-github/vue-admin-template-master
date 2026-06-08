@@ -227,7 +227,7 @@ import {
   getPreparation,
   getLocality,
   updateLot,
-  getLots, getDeterminationListByPrimaryID, getPreparationListByPrimaryID
+  getLotByPrimary, getDeterminationListByPrimaryID, getPreparationListByPrimaryID
 } from '@/api/table'
 import _ from 'lodash'
 import { parseTime } from '@/utils'
@@ -303,7 +303,8 @@ export default {
 
   },
   mounted() {
-    this.getLot(this.currCatalogNo)
+    // 用 PrimaryID 加载（子节点没有 CatalogNumber，按 catalog 会传 null）
+    this.getLot(this.currPrimaryID)
 
   },
 
@@ -316,16 +317,14 @@ export default {
         }
       }
     },
-    getLot(catalogNo){
+    getLot(primaryId){
       this.listLoading = true
       this.$message({
         message: 'loading Lot information...',
         type: 'info'
       })
-      // getLots({ 'ids': this.searchForm.lowCatalogNumber===''?1:this.searchForm.lowCatalogNumber, 'limit': limit }).then(response => {
-      getLots({
-        'ids': catalogNo,'limit': 1
-      }).then(response => {
+      // 子节点没有 CatalogNumber，统一按 PrimaryID 加载（root 也适用）
+      getLotByPrimary(primaryId).then(response => {
         const data = response.data.items[0]
         console.log(data,response.data.items[0])
         this.form.primaryID = data.PrimaryID

@@ -108,8 +108,10 @@ export const asyncRoutes = [
         meta: { title: 'Deaccesion', icon: 'jar', roles: ['admin'] }
       },
       {
+        // Basic Search 暂时隐藏（保留路由/组件，仅不显示在菜单）
         path: 'search',
         name: 'SearchLot',
+        hidden: true,
         component: () => import('@/views/Lot/baseSearch/index'),
         meta: { title: 'Search', icon: 'form' },
         children: [
@@ -120,6 +122,19 @@ export const asyncRoutes = [
             meta: { title: 'Basic Search', icon: 'form' }
           }
         ]
+      },
+      {
+        // 原 Advanced Search → 现在就叫 Search（放大镜图标）
+        path: 'advanced-search',
+        name: 'AdvancedSearchLot',
+        component: () => import('@/views/Lot/advancedSearch/index'),
+        meta: { title: 'Search', icon: 'search' }
+      },
+      {
+        path: 'collections',
+        name: 'LotCollectionTree',
+        component: () => import('@/views/Lot/collectionTree/index'),
+        meta: { title: 'Collection Tree', icon: 'tree' }
       },
       {
         path: 'lot-main',

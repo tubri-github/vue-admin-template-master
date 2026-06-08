@@ -37,11 +37,11 @@ module.exports = {
       errors: true
     },
     proxy: {
-      '/': {
-        target: 'http://localhost:6000/',
+      '/api': {
+        target: process.env.VUE_APP_BACKEND_API_URL || 'http://localhost:8002',
         changeOrigin: true,
         pathRewrite: {
-          '^/': ''
+          '^/api': '/api'
         }
       }
     }
@@ -55,6 +55,11 @@ module.exports = {
       alias: {
         '@': resolve('src')
       }
+    },
+    output: {
+      // 确保每次构建的文件名都包含哈希值
+      filename: process.env.NODE_ENV === 'production' ? 'static/js/[name].[contenthash:8].js' : '[name].js',
+      chunkFilename: process.env.NODE_ENV === 'production' ? 'static/js/[name].[contenthash:8].js' : '[name].js'
     }
   },
   chainWebpack(config) {

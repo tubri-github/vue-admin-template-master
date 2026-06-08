@@ -114,6 +114,14 @@ export function getSpeciesStats() {
     method: 'get'
   })
 }
+// 按 PrimaryID 取单条 lot 编辑数据（子节点没有 CatalogNumber，edit 必须用 PrimaryID）
+export function getLotByPrimary(primaryId) {
+  return request({
+    url: api_prefix + 'lots' + '/lot-by-primary/' + primaryId,
+    method: 'get'
+  })
+}
+
 export function getLots(params) {
   return request({
     url: api_prefix + 'lots' + '/lot/' + params.ids + '/' + params.limit,
@@ -148,6 +156,40 @@ export function getLotsAdvanced(params) {
     url: api_prefix + 'lots' + '/lots',
     method: 'get',
     params
+  })
+}
+
+// 返回 lots 可过滤列清单（key/label/group/type/operators），驱动 chip 选择器
+export function getLotsFilterMetadata() {
+  return request({
+    url: api_prefix + 'lots' + '/lots/filter-metadata',
+    method: 'get'
+  })
+}
+
+// Collection 树：取某节点及其后代
+export function getLotTree(params) {
+  return request({
+    url: api_prefix + 'lots' + '/tree/' + params.primaryId,
+    method: 'get'
+  })
+}
+
+// Collection 树：在某节点下加子记录（osteology/tissue/image）
+export function addSubRecord(data) {
+  return request({
+    url: api_prefix + 'lots' + '/sub-record',
+    method: 'post',
+    data
+  })
+}
+
+// Collection 树：删除一个子记录节点（cascade=true 连整棵子树一起删；root 不可删）
+export function deleteSubRecord(primaryId, cascade = false) {
+  return request({
+    url: api_prefix + 'lots' + '/sub-record/' + primaryId,
+    method: 'delete',
+    params: { cascade }
   })
 }
 

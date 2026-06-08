@@ -1,9 +1,32 @@
 <template>
   <div class="app-container">
-    <el-form ref="form" :model="form" label-width="120px">
+   <el-row :gutter="20">
+    <el-col :span="13" class="left-pane">
+    <!-- 始终告诉录入员当前在建「根 lot」还是「子节点」 -->
+    <div class="form-header" :class="mode">
+      <span v-if="mode === 'sub'">
+        <i class="el-icon-bottom-right" />
+        Adding a <b>SUB-RECORD</b> under <b>{{ subParentLabel }}</b>
+        <span class="fh-hint">— taxon &amp; locality inherited, fill the rest</span>
+      </span>
+      <span v-else>
+        <i class="el-icon-folder-add" />
+        Cataloging a <b>NEW ROOT LOT</b><span v-if="rootPrimaryId"> &nbsp;(last saved: #{{ rootCatalog }})</span>
+      </span>
+      <el-button v-if="rootPrimaryId" type="text" class="fh-action" @click="startNewRoot">＋ Start a new lot</el-button>
+      <el-button v-if="mode === 'sub'" type="text" class="fh-action" @click="exitSubMode">Cancel sub</el-button>
+    </div>
+    <el-form ref="form" :model="form" label-width="120px" :class="['lot-form', mode]">
 <!--      <el-form-item label="Catalog Number">-->
 <!--        <el-input v-model="form.catalogNumber" />-->
 <!--      </el-form-item>--> <!-- return auto incement catalog id will have id duplicate issues -->
+      <el-form-item label="Node type">
+        <el-select v-model="form.collection" class="filter-item" placeholder="What kind of lot is this?">
+          <el-option v-for="opt in collectionOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+        </el-select>
+        <span v-if="mode === 'root'" class="muted">This lot is the tree root (gets a numeric catalog #). Sub-records are added below after saving.</span>
+        <span v-else class="muted">Sub-record under <b>{{ subParentLabel }}</b> (gets a TIS-/OST- identifier). Taxon &amp; locality are inherited — adjust the rest.</span>
+      </el-form-item>
       <el-form-item label="Prev Number">
         <el-input v-model="form.prevNumber" />
       </el-form-item>
@@ -202,10 +225,80 @@
           </el-select>
       </el-form-item>
       <el-form-item>
-        <el-button type="primary" @click="onSubmit">Create</el-button>
-        <el-button @click="onCancel">Cancel</el-button>
+        <el-button type="primary" :loading="saving" @click="onSubmit">
+          {{ mode === 'sub' ? 'Add sub-record' : 'Create lot' }}
+        </el-button>
+        <el-button v-if="mode === 'sub'" @click="exitSubMode">Cancel sub</el-button>
+        <el-button v-else @click="onCancel">Cancel</el-button>
       </el-form-item>
     </el-form>
+    </el-col>
+
+    <!-- 右侧：collection 树（始终在视野内），可载入已有 lot 来建/管树 -->
+    <el-col :span="11" class="right-pane">
+      <div class="tree-card">
+        <div class="tree-head">Collection tree</div>
+        <div class="load-row">
+          <el-input v-model="loadCatalog" size="small" placeholder="Catalog # of an existing lot" clearable @keyup.enter.native="loadExisting">
+            <template slot="prepend">Catalog #</template>
+          </el-input>
+          <el-button size="small" type="primary" plain :loading="loadingTree" @click="loadExisting">Load</el-button>
+        </div>
+
+        <div v-if="!rootPrimaryId" class="tree-empty">
+          Create a lot on the left, or load an existing one above — its collection tree shows here, then click a node to add sub-records.
+        </div>
+        <template v-else>
+          <div class="tree-sub">Tree of <b>#{{ rootCatalog }}</b></div>
+          <el-tree
+            ref="tree"
+            :data="treeData"
+            node-key="PrimaryID"
+            :expand-on-click-node="false"
+            default-expand-all
+            highlight-current
+            @node-click="onNode"
+          >
+            <span slot-scope="{ data }" class="tree-row">
+              <el-tag size="mini" :type="tagType(data.collection)" effect="plain">{{ data.collection }}</el-tag>
+              <b>{{ data.identifier || ('#' + data.CatalogNumber) }}</b>
+              <span v-if="data.TotalNumber" class="muted">×{{ data.TotalNumber }}</span>
+            </span>
+          </el-tree>
+
+          <div class="node-panel">
+            <div v-if="!selectedNode" class="muted">Click a node to add a sub-record under it, or delete it.</div>
+            <template v-else>
+              <p style="margin:0 0 8px">
+                <span class="muted">Selected: </span>
+                <el-tag size="mini" :type="tagType(selectedNode.collection)" effect="plain">{{ selectedNode.collection }}</el-tag>
+                <b>{{ selectedNode.identifier || ('#' + selectedNode.CatalogNumber) }}</b>
+              </p>
+              <el-button
+                v-if="selectedNode.collection !== 'image'"
+                type="primary"
+                size="small"
+                icon="el-icon-plus"
+                @click="startAddSub(selectedNode)"
+              >Add sub-record under this node</el-button>
+              <div v-else class="muted">image is a voucher leaf — cannot have sub-records.</div>
+              <el-button
+                v-if="selectedNode.parent_id"
+                type="danger"
+                size="small"
+                plain
+                icon="el-icon-delete"
+                :loading="deleting"
+                style="margin-left:8px"
+                @click="delNode"
+              >Delete{{ childCount(selectedNode) ? (' (+' + childCount(selectedNode) + ')') : '' }}</el-button>
+            </template>
+          </div>
+        </template>
+      </div>
+    </el-col>
+   </el-row>
+
     <el-dialog :visible.sync="newCatalogNumberVisible">
       <el-input v-model="newCatalogNumber" placeholder="Sorry, there is an issue happen when the api created the new lot record." style="width:400px;max-width:100%;" />
       <el-button type="primary" icon="el-icon-document" @click="handleCopy(newCatalogNumber)">
@@ -223,7 +316,10 @@ import {
   getDeterminers,
   getPreparation,
   getLocality,
-  addNewLot
+  addNewLot,
+  getLotTree,
+  getLotsAdvanced,
+  deleteSubRecord
 } from '@/api/table'
 import clip from '@/utils/clipboard'
 import _ from 'lodash'
@@ -248,7 +344,21 @@ export default {
       allTaxonOptions:[],
       newCatalogNumberVisible:false,
       newCatalogNumber:'',
+      // ---- collection tree / mode state ----
+      mode: 'root', // 'root' = 建根 lot；'sub' = 在 subParentId 下建子节点
+      loadCatalog: '',     // 右侧「载入已有 lot」输入框
+      loadingTree: false,
+      subParentId: null,
+      subParentLabel: '',
+      rootPrimaryId: null,
+      rootCatalog: null,
+      flat: [],
+      treeData: [],
+      selectedNode: null,
+      saving: false,
+      deleting: false,
       form: {
+        collection: 'fluid', // root 节点类型: fluid|osteology|tissue (image 不能当 root)
         prevNumber: '',
         dateCataloged,
         jarSize: '',
@@ -283,6 +393,20 @@ export default {
         pageNumber:1,
         keyWord:this.keyWord
       }
+    },
+    collectionOptions() {
+      // root 可选 fluid/osteology/tissue；子节点只能 osteology/tissue（image 走单独的图片页）
+      if (this.mode === 'sub') {
+        return [
+          { value: 'osteology', label: 'skeleton / osteology (OST-)' },
+          { value: 'tissue', label: 'tissue (TIS-)' }
+        ]
+      }
+      return [
+        { value: 'fluid', label: 'fish / fluid (whole specimen, fluid-preserved)' },
+        { value: 'osteology', label: 'skeleton / osteology' },
+        { value: 'tissue', label: 'tissue' }
+      ]
     }
   },
   created() {
@@ -462,24 +586,173 @@ export default {
       //this.$refs.multipleTable.toggleRowSelection(val.row, selected) //ref定义在el-table中
     },
     onSubmit() {
-      console.log('typeof dateCataloged:', typeof this.form.dateCataloged, this.form.dateCataloged)
+      // 校验：preparation 下拉有值时，count 不能为空（0 允许）。
+      const badPrep = (this.form.preparation || []).find(
+        p => p.preparationType && (p.count === '' || p.count === null || p.count === undefined)
+      )
+      if (badPrep) {
+        this.$message.error('Preparation "' + badPrep.preparationType + '" needs a count (0 is allowed, but it cannot be empty).')
+        return
+      }
+
       const searchParams = Object.fromEntries(
         Object.entries(this.form).filter(([_, v]) => v !== '' && v !== null && v !== undefined)
       )
+      const isSub = this.mode === 'sub'
+      if (isSub) searchParams.parentId = this.subParentId
 
-
-      addNewLot(searchParams).then(response =>{
-        this.$message('submit!')
-        this.newCatalogNumberVisible = true
-        this.newCatalogNumber = response.data.items.CatalogNumber
-        //location.reload()
-      })
+      this.saving = true
+      addNewLot(searchParams).then(response => {
+        const items = response.data.items
+        if (isSub) {
+          this.$message.success('Added sub-record ' + items.identifier)
+          // 留在 sub 模式，方便继续在同一父节点下加；重置非继承字段。
+          this.enterSubMode(this.subParentId, this.subParentLabel)
+          return this.reloadTree()
+        }
+        // 建了 root：后端直接返回了 PrimaryID，载入树、切到 sub 模式（默认在 root 下加）。
+        this.rootCatalog = items.CatalogNumber
+        this.rootPrimaryId = items.PrimaryID
+        this.$message.success('Created lot #' + items.CatalogNumber + ' — add sub-records below.')
+        return this.reloadTree().then(() => this.enterSubMode(items.PrimaryID, '#' + items.CatalogNumber))
+      }).catch(err => {
+        this.$message.error((err && err.message) || 'Failed to save')
+      }).then(() => { this.saving = false })
     },
     onCancel() {
-      this.$message({
-        message: 'cancel!',
-        type: 'warning'
+      this.$message({ message: 'cancel!', type: 'warning' })
+    },
+
+    // ---------- collection tree ----------
+    // 载入一条已有 lot（按 catalog #），拉它的树并进入 sub 模式；预填该 lot 的 taxon+locality 供继承。
+    loadExisting() {
+      const cat = (this.loadCatalog || '').trim()
+      if (!cat) return
+      this.loadingTree = true
+      getLotsAdvanced({ ids: cat, page: 1, page_size: 1 }).then(res => {
+        const row = (res.data.items || [])[0]
+        if (!row) { this.$message.warning('No lot found for #' + cat); return }
+        this.rootPrimaryId = row.PrimaryID
+        this.rootCatalog = row.CatalogNumber
+        this.selectedNode = null
+        // 预填继承的 taxon + locality（让该 lot 下加子节点时自动带上）
+        this.form.localityId = row.Locality1ID || ''
+        if (row.Locality1ID) {
+          this.localityList = [{ localityID: row.Locality1ID, localityString: row.LocalityString }]
+        }
+        if (row.TaxonID) {
+          this.taxonOptions = [{ TaxonID: row.TaxonID, TaxonName: row.FullScientificName }]
+          this.form.zDetermination = [{
+            isCurrent: true, taxonId: row.TaxonID,
+            determination: { determinerName: '', determinerID: '' }, date: '', remarks: ''
+          }]
+        }
+        return this.reloadTree().then(() => this.enterSubMode(row.PrimaryID, '#' + row.CatalogNumber))
+      }).catch(() => { this.$message.error('Failed to load lot') })
+        .then(() => { this.loadingTree = false })
+    },
+    tagType(coll) {
+      return { fluid: '', osteology: 'info', tissue: 'success', image: 'warning' }[coll] || ''
+    },
+    childCount(node) {
+      return node ? this.flat.filter(n => n.parent_id === node.PrimaryID).length : 0
+    },
+    buildTree(items) {
+      const byId = {}
+      items.forEach(i => { byId[i.PrimaryID] = Object.assign({ children: [] }, i) })
+      const roots = []
+      items.forEach(i => {
+        const node = byId[i.PrimaryID]
+        if (i.parent_id && byId[i.parent_id]) byId[i.parent_id].children.push(node)
+        else roots.push(node)
       })
+      return roots
+    },
+    reloadTree() {
+      if (!this.rootPrimaryId) return Promise.resolve()
+      return getLotTree({ primaryId: this.rootPrimaryId }).then(res => {
+        this.flat = res.data.items || []
+        this.treeData = this.buildTree(this.flat)
+        if (this.selectedNode) {
+          this.selectedNode = this.flat.find(n => n.PrimaryID === this.selectedNode.PrimaryID) || null
+        }
+      })
+    },
+    onNode(data) { this.selectedNode = data },
+    startAddSub(node) {
+      const label = (node.identifier || ('#' + node.CatalogNumber))
+      this.selectedNode = node
+      this.enterSubMode(node.PrimaryID, label)
+      this.$nextTick(() => window.scrollTo({ top: 0, behavior: 'smooth' }))
+    },
+    // 进入/继续 sub 模式：保留继承的 taxon(zDetermination) + locality，重置其余字段。
+    enterSubMode(parentId, label) {
+      this.mode = 'sub'
+      this.subParentId = parentId
+      this.subParentLabel = label || ''
+      this.form.collection = 'tissue'
+      this.form.prevNumber = ''
+      this.form.dateCataloged = new Date()
+      this.form.jarSize = ''
+      this.form.catalogerId = ''
+      this.form.storage = ''
+      this.form.totalNumber = 1
+      this.form.typeStatus = ''
+      this.form.inventory = ''
+      this.form.remarks = ''
+      this.form.preparation = [{ preparationType: '', count: '' }]
+      // zDetermination(taxon) 与 localityId 保留 = 继承
+    },
+    exitSubMode() {
+      this.mode = 'root'
+      this.subParentId = null
+      this.subParentLabel = ''
+    },
+    startNewRoot() {
+      // 清空整页，回到建新根 lot。
+      this.mode = 'root'
+      this.subParentId = null
+      this.subParentLabel = ''
+      this.rootPrimaryId = null
+      this.rootCatalog = null
+      this.flat = []
+      this.treeData = []
+      this.selectedNode = null
+      this.form.collection = 'fluid'
+      this.form.prevNumber = ''
+      this.form.dateCataloged = new Date()
+      this.form.jarSize = ''
+      this.form.catalogerId = ''
+      this.form.storage = ''
+      this.form.totalNumber = ''
+      this.form.typeStatus = ''
+      this.form.inventory = ''
+      this.form.remarks = ''
+      this.form.localityId = ''
+      this.form.zDetermination = [{
+        isCurrent: true, taxonId: '', determination: { determinerName: '', determinerID: '' }, date: '', remarks: ''
+      }]
+      this.form.preparation = [{ preparationType: '', count: '' }]
+    },
+    delNode() {
+      const node = this.selectedNode
+      if (!node || !node.parent_id) return
+      const kids = this.childCount(node)
+      const label = node.identifier || ('#' + node.CatalogNumber)
+      const warn = kids
+        ? `Delete ${label} AND its ${kids} sub-record(s)? This cannot be undone.`
+        : `Delete ${label}? This cannot be undone.`
+      this.$confirm(warn, 'Confirm delete', { type: 'warning' }).then(() => {
+        this.deleting = true
+        return deleteSubRecord(node.PrimaryID, kids > 0)
+      }).then(res => {
+        this.$message.success('Deleted ' + res.data.items.count + ' record(s)')
+        this.selectedNode = null
+        return this.reloadTree()
+      }).catch(err => {
+        if (err === 'cancel' || err === 'close') return
+        this.$message.error((err && err.message) || 'Failed to delete')
+      }).then(() => { this.deleting = false })
     }
   }
 }
@@ -489,5 +762,39 @@ export default {
 .line{
   text-align: center;
 }
+.muted{
+  display: block;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.4;
+  margin-top: 4px;
+}
+/* 模式头条：始终显示在建「根 lot」还是「子节点」 */
+.form-header{
+  display: flex; align-items: center;
+  padding: 10px 14px; border-radius: 6px; margin-bottom: 12px;
+  font-size: 14px; font-weight: 500;
+}
+.form-header i{ font-size: 18px; margin-right: 8px; }
+.form-header.root{ background: #ecf5ff; color: #409eff; border: 1px solid #b3d8ff; }
+.form-header.sub{ background: #f0f9eb; color: #5daf34; border: 1px solid #c2e7b0; }
+.form-header .fh-hint{ font-weight: 400; opacity: .8; margin-left: 4px; }
+.form-header .fh-action{ margin-left: auto; padding: 0 6px; }
+/* 左右两栏 */
+.left-pane{ padding-right: 4px; }
+.right-pane .tree-card{ position: sticky; top: 12px; }
+.tree-card{
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0,0,0,.06);
+}
+.tree-head{ font-size: 14px; font-weight: 600; color: #303133; margin-bottom: 12px; }
+.tree-row{ display: inline-flex; align-items: center; gap: 8px; }
+.load-row{ display: flex; gap: 8px; margin-bottom: 12px; }
+.tree-empty{ color: #909399; font-size: 13px; line-height: 1.6; background: #fafafa; border: 1px dashed #dcdfe6; border-radius: 6px; padding: 18px; text-align: center; }
+.tree-sub{ font-size: 12px; color: #909399; margin-bottom: 8px; }
+.node-panel{ margin-top: 12px; padding-top: 12px; border-top: 1px solid #ebeef5; }
 </style>
 
