@@ -108,6 +108,67 @@ export function getLocalityAdvanced(params = {}) {
   return searchLocalities(searchParams)
 }
 
+// 新版 locality 高级搜索（过滤引擎，直传 search/field_filters/structured_filters/page…）—— 给 AdvancedSearchBase 用
+export function searchLocalitiesAdvanced(params) {
+  return request({
+    url: api_prefix + 'locality' + '/localityAdvanced',
+    method: 'get',
+    params
+  })
+}
+
+// locality 搜索的 filter-metadata（路径是单段 /filter-metadata，避开 /locality/{keyword}）
+export function getLocalityFilterMetadata() {
+  return request({
+    url: api_prefix + 'locality' + '/filter-metadata',
+    method: 'get'
+  })
+}
+
+// GEOLocate 地理参照：按文字 locality + 行政区反查候选坐标
+export function georeferenceLocality(params) {
+  return request({
+    url: api_prefix + 'locality' + '/georeference',
+    method: 'get',
+    params
+  })
+}
+
+// 把选定的经纬度存回某条 locality
+export function updateLocalityCoords(data) {
+  return request({
+    url: api_prefix + 'locality' + '/update-coords',
+    method: 'post',
+    data
+  })
+}
+
+// 按 Locality1ID 取单条 locality（编辑加载用）
+export function getLocalityById(id) {
+  return request({
+    url: api_prefix + 'locality' + '/' + id,
+    method: 'get'
+  })
+}
+
+// 更新一条已有 locality（编辑提交）
+export function updateLocality(data) {
+  return request({
+    url: api_prefix + 'locality' + '/update-locality',
+    method: 'post',
+    data
+  })
+}
+
+// 地名建议（gazetteer）：本地受控词表 + GeoNames。level=continent|country|state|county
+export function geoSuggest(params) {
+  return request({
+    url: api_prefix + 'locality' + '/geo-suggest',
+    method: 'get',
+    params
+  })
+}
+
 export function getSpeciesStats() {
   return request({
     url: api_prefix + 'stats' + '/speciesStats',
@@ -198,6 +259,23 @@ export function getLoansAdvanced(params) {
     url: api_prefix + 'loan' + '/loanAdvanced',
     method: 'get',
     params
+  })
+}
+
+// Loan 搜索的 filter-metadata（驱动通用 AdvancedSearchBase 的 chip 选择器）
+// 注意：路径不能放在 /loan/ 下，否则被 /loan/{loanid} 抢先匹配
+export function getLoanFilterMetadata() {
+  return request({
+    url: api_prefix + 'loan' + '/filter-metadata',
+    method: 'get'
+  })
+}
+
+// 按 LoanNumber 取借阅详情（含各借阅明细行）
+export function getLoanDetail(loanNumber) {
+  return request({
+    url: api_prefix + 'loan' + '/loan/' + loanNumber,
+    method: 'get'
   })
 }
 

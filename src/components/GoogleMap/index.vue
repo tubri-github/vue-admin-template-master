@@ -2,18 +2,20 @@
 <div>
   <div>
     <GmapMap
-      :center='center'
-      :zoom='12'
+      ref="gmap"
+      :center='mapCenter'
+      :zoom='zoom'
       style='width:100%;  height: 300px;'
     >
       <GmapMarker
         @dragend = "updateMarker($event)"
         :key="index"
-        v-for="(m, index) in markers"
+        v-for="(m, index) in displayMarkers"
         :position="m.position"
+        :label="m.label"
         :clickable="true"
-        :draggable="true"
-        @click="center=m.position"
+        :draggable="!points.length"
+        @click="onMarkerClick(m, index)"
       ></GmapMarker>
     </GmapMap>
   </div>
@@ -23,6 +25,11 @@
 <script>
 export default {
   name: 'GoogleMap',
+  props: {
+    // 传入 points（[{lat,lng,label?}]）时：展示这些候选点（只读、可点选），并禁用内置 geolocate。
+    // 不传时：保持原行为（浏览器定位 + 单个可拖 marker + updatedPosition）。
+    points: { type: Array, default: () => [] }
+  },
   data(){
     return{
       center:{
@@ -39,12 +46,50 @@ export default {
       ]
     }
   },
+  computed:{
+    displayMarkers(){
+      if (this.points.length) {
+        return this.points.map((p, i) => ({
+          position: { lat: Number(p.lat), lng: Number(p.lng) },
+          label: p.label != null ? String(p.label) : String(i + 1)
+        }))
+      }
+      return this.markers
+    },
+    mapCenter(){
+      if (this.points.length) {
+        const p = this.points[0]
+        return { lat: Number(p.lat), lng: Number(p.lng) }
+      }
+      return this.center
+    },
+    zoom(){ return this.points.length ? 8 : 12 }
+  },
+  watch:{
+    points(){ this.fitToPoints() }
+  },
   mounted(){
-    this.geolocate();
+    if (!this.points.length) this.geolocate();
+    else this.fitToPoints();
   },
   methods:{
     setPlace(place) {
       this.currentPlace = place;
+    },
+    // 候选点模式：把地图视野缩放到框住所有候选点
+    fitToPoints(){
+      if (!this.points.length || !this.$refs.gmap) return
+      this.$refs.gmap.$mapPromise.then(map => {
+        const g = window.google
+        if (!g || !g.maps) return
+        const b = new g.maps.LatLngBounds()
+        this.points.forEach(p => b.extend({ lat: Number(p.lat), lng: Number(p.lng) }))
+        map.fitBounds(b)
+      }).catch(() => {})
+    },
+    onMarkerClick(m, index){
+      if (this.points.length) this.$emit('select', this.points[index])
+      else this.center = m.position
     },
     updateMarker: function(event){
       this.markers = [{

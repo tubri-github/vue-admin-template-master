@@ -42,7 +42,7 @@ export const constantRoutes = [
     component: () => import('@/views/auth/callback'),
     hidden: true,
     meta: {
-      skipAuth: true  // 标记此路由跳过认证检查
+      skipAuth: true// 标记此路由跳过认证检查
     }
   },
 
@@ -166,10 +166,11 @@ export const asyncRoutes = [
         meta: { title: 'Add', icon: 'locality', roles: ['admin', 'editor'] }
       },
       {
+        // 新版 locality 搜索（复用通用 AdvancedSearchBase）；旧 LocalitySearch/Search 留作参考
         path: 'search',
         name: 'SearchLocality',
-        component: () => import('@/views/Locality/LocalitySearch/Search'),
-        meta: { title: 'Search', icon: 'form' }
+        component: () => import('@/views/Locality/AdvancedSearch/index'),
+        meta: { title: 'Search', icon: 'search' }
       },
       {
         path: 'es-search',
@@ -194,10 +195,11 @@ export const asyncRoutes = [
         meta: { title: 'Add', icon: 'loan', roles: ['admin', 'editor'] }
       },
       {
+        // 新版借阅搜索（复用通用 AdvancedSearchBase）；旧 LoanSearch 留作参考
         path: 'search',
         name: 'SearchLoan',
-        component: () => import('@/views/Loan/LoanSearch/index'),
-        meta: { title: 'Search', icon: 'form' }
+        component: () => import('@/views/Loan/AdvancedSearch/index'),
+        meta: { title: 'Search', icon: 'search' }
       }
     ]
   },

@@ -14,19 +14,13 @@
         <el-input v-model="form.waterbody" />
       </el-form-item>
       <el-form-item label="Continent">
-        <el-select v-model="form.continent" class="filter-item" placeholder="Please select continent">
-          <el-option v-for="item in continentOptions" :key="item.continentID" :label="item.continentName" :value="item.continentName" />
-        </el-select>
+        <GeoField v-model="form.continent" level="continent" placeholder="Select or type a continent" />
       </el-form-item>
       <el-form-item label="Country">
-        <el-select v-model="form.country" class="filter-item" placeholder="Please select Country">
-          <el-option v-for="item in countryOptions" :key="item.countryID" :label="item.countryName" :value="item.countryName" />
-        </el-select>
+        <GeoField v-model="form.country" level="country" placeholder="Select or type a country" @picked="onGeoPick('country', $event)" />
       </el-form-item>
       <el-form-item label="State">
-        <el-select v-model="form.state" class="filter-item" placeholder="Please select state">
-          <el-option v-for="item in statesOptions" :key="item.stateID" :label="item.stateName" :value="item.stateName" />
-        </el-select>
+        <GeoField v-model="form.state" level="state" placeholder="Select or type a state/province" @picked="onGeoPick('state', $event)" />
       </el-form-item>
 <!--      <el-form-item label="Island">-->
 <!--        <el-input v-model="form.island" />-->
@@ -35,9 +29,7 @@
 <!--        <el-input v-model="form.islandGroup" />-->
 <!--      </el-form-item>-->
       <el-form-item label="County">
-        <el-select v-model="form.county" class="filter-item" placeholder="Please select state">
-          <el-option v-for="item in countyOptions" :key="item.countyID" :label="item.countyName" :value="item.countyName" />
-        </el-select>
+        <GeoField v-model="form.county" level="county" placeholder="Select or type a county" @picked="onGeoPick('county', $event)" />
       </el-form-item>
       <el-form-item label="Lat">
         <el-input v-model="form.latitude" />
@@ -46,8 +38,15 @@
         <el-input v-model="form.longitude" />
       </el-form-item>
       <el-form-item>
+        <el-button size="small" type="primary" plain icon="el-icon-map-location" @click="geoVisible = true">
+          Georeference from locality text (GEOLocate)
+        </el-button>
+        <span class="muted" style="margin-left:8px">Auto-suggest lat/long from the locality text; adjust on the map below.</span>
+      </el-form-item>
+      <el-form-item>
         <GoogleMap v-on:updatedPosition="updatedPosition"></GoogleMap>
       </el-form-item>
+      <GeorefDialog :visible.sync="geoVisible" :locality="geoLocObj" @picked="onGeoPicked" />
       <el-form-item label="Date">
         <el-col :span="11">
           <el-date-picker v-model="form.startDate" type="date" placeholder="Pick a date" style="width: 100%;" />
@@ -112,7 +111,7 @@
             </el-table-column>
           </el-table>
         </el-form-item>
-          <el-button type="primary" @click="onSubmit">Create</el-button>
+          <el-button type="primary" @click="onSubmit">{{ isEdit ? 'Save changes' : 'Create' }}</el-button>
           <el-button @click="onCancel">Cancel</el-button>
     </el-form>
     <el-divider content-position="left"> Please first create a locality in order to proceed with adding lots. </el-divider>
@@ -191,19 +190,27 @@ import {
   getContinent,
   getCounty,
   getCollectors,
-  addNewLocality, addNewLoan, addNewStaff
+  addNewLocality, addNewLoan, addNewStaff, getLocalityById, updateLocality
 } from '@/api/table'
 import _ from 'lodash'
 import { parseTime } from '@/utils'
 import GoogleMap from '@/components/GoogleMap'
+import GeorefDialog from '@/components/GeorefDialog'
+import GeoField from '@/components/GeoField'
 import LotNewComplexTable from '@/views/lotform/index'
 import Pagination from '@/components/Pagination'
 import LotComplexTable from '@/views/lotform/updateLot'
 const dateCataloged = parseTime(new Date(), '{y}-{m}-{d}')
 export default {
-  components: { GoogleMap, LotNewComplexTable, LotComplexTable },
+  components: { GoogleMap, GeorefDialog, GeoField, LotNewComplexTable, LotComplexTable },
+  props: {
+    // 传入则进入编辑模式：按 Locality1ID 加载已有产地、提交走 update（复用 add 表单，同 loan/lots）
+    externalLocalityId: { type: [String, Number], default: null }
+  },
   data() {
     return {
+      geoVisible: false,
+      isEdit: false,
       statesOptions:[{
       }],
       countryOptions:[{
@@ -311,6 +318,7 @@ export default {
     this.getCountries()
     this.getContinent()
     this.getCounty()
+    if (this.externalLocalityId) this.loadLocality(this.externalLocalityId)
   },
   computed:{
     queryParams(){
@@ -318,6 +326,12 @@ export default {
         pageSize:-1, //query all data
         pageNumber:1,
         keyWord:this.keyWord
+      }
+    },
+    geoLocObj(){
+      return {
+        locality: this.form.localityString || this.form.drainage || '',
+        country: this.form.country, state: this.form.state, county: this.form.county
       }
     }
   },
@@ -331,7 +345,30 @@ export default {
       this.isLotSectionEnabled = true
     },
 
+    // 编辑模式：按 id 加载已有产地填进 form（字段名映射 locality1 列 → form）
+    loadLocality(id) {
+      getLocalityById(id).then(response => {
+        const d = (response.data.items || [])[0]
+        if (!d) { this.$message.error('Locality not found'); return }
+        this.isEdit = true
+        Object.assign(this.form, {
+          fieldNo: d.FieldNo || '', localityString: d.LocalityString || '', drainage: d.Drainage || '',
+          waterbody: d.WaterBody || '', country: d.Country || '', continent: d.Continent || '',
+          state: d.State || '', county: d.County || '', latitude: d.Lat != null ? d.Lat : '',
+          longitude: d.Lon != null ? d.Lon : '', startDate: d.StartDate || '', endDate: d.EndDate || '',
+          verbatimDate: d.VerbatimDate || '', remark: d.Remarks || '', inventory: d.Inventory || '',
+          verbatimCollectors: d.VerbatimCollectors || ''
+        })
+      }).catch(() => { this.$message.error('Failed to load locality') })
+    },
     onSubmit() {
+      if (this.isEdit) {
+        updateLocality(Object.assign({ localityId: this.externalLocalityId }, this.form)).then(() => {
+          this.$message.success('Locality updated')
+          this.$emit('saved')
+        }).catch(err => { this.$message.error((err && err.message) || 'Update failed') })
+        return
+      }
       addNewLocality(this.form).then((response) =>{
         this.$message('submit!')
         this.enableLotSection(response.data.localityID)
@@ -345,9 +382,24 @@ export default {
       })
     },
     updatedPosition:function(updatedPosition){
-      console.log(updatedPosition)
       this.form.latitude = updatedPosition.lat
       this.form.longitude = updatedPosition.lng
+    },
+    // 从 GeoField(GeoNames) 选中带层级的地名 → 自动回填父级（county→state/country，state→country）
+    onGeoPick(level, item){
+      if (!item) return
+      if (level === 'county') {
+        if (item.state) this.form.state = item.state
+        if (item.country) this.form.country = item.country
+      } else if (level === 'state') {
+        if (item.country) this.form.country = item.country
+      }
+    },
+    // GEOLocate 选定候选 → 写回 lat/lon（和地图 updatedPosition 写同样的字段，互补不冲突）
+    onGeoPicked(coords){
+      this.form.latitude = coords.lat
+      this.form.longitude = coords.lon
+      this.$message.success('Coordinates set: ' + coords.lat + ', ' + coords.lon + ' — adjust on the map if needed.')
     },
     remoteMethod(searchKey){
       if(searchKey !== "") {

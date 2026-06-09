@@ -1,15 +1,10 @@
-// Lots specimen labels — generate a geometry-exact label PDF with pdfmake.
+// Lots specimen labels — geometry-exact label PDF with pdfmake (legacy TULANE layout).
 // Printer: Datamax-I4308 thermal label printer. Stock = 4" wide (across the print head /
-// printer mouth) x 2" feed length. Content prints landscape with NO rotation (4" head fits 4" content).
+// printer mouth) x 2" feed length. Content prints landscape with NO rotation.
 // Key: PDF page size = one physical label, so the print path never has to scale; the only
 // "margin" that matters on a thermal printer is an X/Y registration offset you calibrate once.
 // The printer feeds one label at a time, so each label = one page (pageBreak).
-// Silent printing (web app can't shell out to SumatraPDF): launch the app's Chrome with
-// --kiosk-printing + Datamax as the default printer, and set the driver default to no-scale / 100%.
-import pdfMake from 'pdfmake/build/pdfmake'
-import pdfFonts from 'pdfmake/build/vfs_fonts'
-
-pdfMake.vfs = (pdfFonts && pdfFonts.pdfMake && pdfFonts.pdfMake.vfs) || pdfFonts.vfs
+import { cutLinesBackground, printPdf, downloadPdf } from '@/utils/labelCommon'
 
 const PT_PER_IN = 72 // pdfmake works in points; 1 inch = 72pt
 const MM = 2.83465 // 1mm ≈ 2.83465pt (used for fine X/Y registration offsets)
@@ -37,18 +32,34 @@ function fld(v, opts) {
 }
 const SPAN = {} // placeholder cell for colSpan
 
-// One label: a table so every value gets an underline (even when empty). Fields match the legacy TULANE label.
-function labelBlocks(row) {
+// Big catalog number running down the right edge (legacy `writing-mode: vertical-rl`, 50px).
+// pdfmake can't rotate text (and SVG rotate breaks this build), so stack the characters
+// vertically — one per line — which reads top-to-bottom down the side just like the old label.
+function verticalNumber(num) {
+  const s = val(num)
+  if (!s) return { text: '', width: 2 }
+  return {
+    width: 'auto',
+    stack: s.split('').map(function(ch) {
+      return { text: ch === ' ' ? ' ' : ch, fontSize: 17, bold: true, alignment: 'center', lineHeight: 0.92 }
+    })
+  }
+}
+
+// One label: TULANE header, a table (every value underlined even when empty), and the
+// vertical catalog number on the right — fields/labels match the legacy TULANE lots label.
+function labelBody(row) {
   const body = [
     [lbl('Family No.'), fld(row.FamilyNumber), lbl('Cat. No.'), fld(row.CatalogNumber)],
-    [lbl('Sci. Name'), fld(row.FullScientificName, { colSpan: 3, italics: true }), SPAN, SPAN],
-    [lbl('Drainage'), fld(row.Drainage), lbl('No. Spec.'), fld(row.TotalNumber)],
+    [lbl('Scientific Name'), fld(row.FullScientificName || row.ScientificName, { colSpan: 3, italics: true }), SPAN, SPAN],
+    [lbl('Dr.'), fld(row.Drainage), lbl('No. of Specimens'), fld(row.TotalNumber)],
     [lbl('State'), fld(row.State), lbl('County'), fld(row.County)],
     [lbl('Locality'), fld(row.LocalityString, { colSpan: 3 }), SPAN, SPAN],
     [lbl('Date'), fld(row.VerbatimDate), lbl('Col. No'), fld(row.FieldNo)],
-    [lbl('Col. by'), fld('', { colSpan: 3 }), SPAN, SPAN]
+    [lbl('Col. by'), fld(row.VerbatimCollectors, { colSpan: 3 }), SPAN, SPAN]
   ]
-  return [{
+  const table = {
+    width: '*',
     table: { widths: ['auto', '*', 'auto', '*'], body },
     layout: {
       defaultBorder: false,
@@ -57,7 +68,19 @@ function labelBlocks(row) {
       paddingLeft: () => 0,
       paddingRight: () => 3
     }
-  }]
+  }
+  return {
+    columns: [table, verticalNumber(row.CatalogNumber)],
+    columnGap: 2
+  }
+}
+
+// Blocks for one label: header + body (cut lines are drawn as a page-edge background).
+function labelBlocks(row) {
+  return [
+    { text: 'TULANE UNIVERSITY COLLECTIONS', bold: true, fontSize: 9, alignment: 'center', margin: [0, 0, 0, 2] },
+    labelBody(row)
+  ]
 }
 
 export function buildLabelDoc(rows, dims) {
@@ -66,6 +89,7 @@ export function buildLabelDoc(rows, dims) {
   const oy = (Number(d.offsetYmm) || 0) * MM // registration offset (shifts content down)
   const px = (Number(d.padXmm) || 0) * MM
   const py = (Number(d.padYmm) || 0) * MM
+  const pageW = d.widthIn * PT_PER_IN
   const content = []
   rows.forEach((row, i) => {
     const blocks = labelBlocks(row)
@@ -73,23 +97,24 @@ export function buildLabelDoc(rows, dims) {
     content.push.apply(content, blocks)
   })
   return {
-    pageSize: { width: d.widthIn * PT_PER_IN, height: d.heightIn * PT_PER_IN },
+    pageSize: { width: pageW, height: d.heightIn * PT_PER_IN },
     // [left, top, right, bottom]: registration offset + inner pad on left/top, pad on right/bottom.
     // Thermal printers calibrate via an X/Y origin offset, not four equal A4 margins.
     pageMargins: [ox + px, oy + py, px, py],
+    background: cutLinesBackground, // dashed cut lines at the physical paper edges
     defaultStyle: { fontSize: Number(d.fontSize) || 8, lineHeight: 1 },
     content
   }
 }
 
-// Print directly (opens the system print dialog)
+// Print directly (hidden-iframe print; reliable from a user click)
 export function printLabels(rows, dims) {
   if (!rows || !rows.length) return
-  pdfMake.createPdf(buildLabelDoc(rows, dims)).print()
+  printPdf(buildLabelDoc(rows, dims))
 }
 
 // Export as a downloadable PDF
 export function downloadLabels(rows, dims) {
   if (!rows || !rows.length) return
-  pdfMake.createPdf(buildLabelDoc(rows, dims)).download('lot-labels.pdf')
+  downloadPdf(buildLabelDoc(rows, dims), 'lot-labels.pdf')
 }

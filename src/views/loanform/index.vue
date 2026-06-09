@@ -175,6 +175,7 @@
         <el-button v-if="form.status === 'edit'" type="primary" @click="onUpdate">Update</el-button>
         <el-button v-if="form.status === 'edit'"type="primary" @click="printLoan">Print</el-button>
         <el-button v-if="form.status === 'edit'"type="primary" @click="printPartialLabels">Print Partial Labels</el-button>
+        <el-button v-if="form.status === 'edit'" @click="downloadPartialLabels">Labels PDF</el-button>
         <el-button v-if="form.status === 'edit'"type="primary" @click="exportExcel">Export to .xlsx</el-button>
         <el-button @click="onCancel">Cancel</el-button>
       </el-form-item>
@@ -185,6 +186,7 @@
       <el-button v-print="'#printPartials'">Print me </el-button>
       <div id="printPartials">
         <div class="lot-item-box" v-for="(item,index) in this.form.loanDetails" :key="item.PrimaryID">
+          <div class="label-page">
           <el-row type="flex" justify="space-around" align="center">
             <el-col ><div class="header-title-info"> <h2><B> TULANE UNIVERSITY COLLECTIONS</B></h2> </div></el-col>
           </el-row>
@@ -193,44 +195,29 @@
             <el-col><div class="header-title-info"> <h3>Loan No.: {{ form.loanNumber }}</h3> </div></el-col>
           </el-row>
 
-          <el-row class="label-item-row" type="flex" justify="space-around"  align="center">
-            <el-col offset="1"><div class="label-item-content"> <span>Family Name</span> <input type="text" class="blank-signature-underline" :value="item.FamilyName" style="width:50%"> </div></el-col>
-            <el-col><div class="label-item-content"> <span>Cat. No</span> <input type="text" class="blank-signature-underline" :value="item.CatalogNumber">  </div></el-col>
-          </el-row>
-
-          <el-row class="label-item-row" type="flex" justify="space-around">
-            <el-col offset="1" span="3"><div class="label-item-content"> <span>Species</span> </div></el-col>
-            <el-col  span="21"><div class="label-item-content"><input type="text" class="blank-signature-underline" :value="item.FullScientificName" style="width:100%"> </div></el-col>
-          </el-row>
-
-
-          <el-row class="label-item-row" type="flex" justify="space-around">
-            <el-col offset="1"><div class="label-item-content"> <span>Dr.</span> <input type="text" class="blank-signature-underline" :value="item.Drainage"> </div></el-col>
-            <el-col><div class="label-item-content"> <span>No. of Specimens</span> <input style="width:30%" type="text" class="blank-signature-underline" :value="item.Quantity + ' of ' + item.TotalNumber">  </div></el-col>
-          </el-row>
-
-          <el-row class="label-item-row" type="flex" justify="space-around">
-
-            <el-col offset="1"><div class="label-item-content"> <span>State</span> <input type="text" class="blank-signature-underline" :value="item.LocalityState"> </div></el-col>
-            <el-col><div class="label-item-content"> <span>County</span> <input type="text" class="blank-signature-underline" :value="item.LocalityCounty">  </div></el-col>
-          </el-row>
-
-          <el-row class="label-item-row" type="flex" >
-            <el-col offset="1" span="3"><div class="label-item-content"> <span>Locality</span></div></el-col>
-            <el-col span="21"><div class="label-item-content"> <el-input type="textarea" autosize class="label-textarea blank-signature-underline" :value="item.LocalityString"  style="width: 100%"></el-input></div></el-col>
-          </el-row>
-
-          <el-row class="label-item-row" type="flex" justify="space-around">
-            <el-col offset="1"><div class="label-item-content"> <span>Col. Date</span> <input type="text" class="blank-signature-underline" :value="item.StartDate"> </div></el-col>
-            <el-col><div class="label-item-content"> <span>Col. No.</span> <input type="text" class="blank-signature-underline" :value="item.FieldNo">  </div></el-col>
-          </el-row>
-
-          <el-row class="label-item-row" type="flex">
-            <el-col offset="1"  span="3"><div class="label-item-content"><span>Col. by </span> </div></el-col>
-            <el-col  span="21"><div class="label-item-content"><input type="text" class="blank-signature-underline" :value="item.VerbatimCollectors" style="width:100%"> </div></el-col>
-          </el-row>
-          <div style="page-break-after: always;"></div>
-
+          <table class="lbl-table">
+            <tr>
+              <td class="k">Family Name</td><td class="v">{{ item.FamilyName }}</td>
+              <td class="k">Cat. No</td><td class="v">{{ item.CatalogNumber }}</td>
+            </tr>
+            <tr><td class="k">Species</td><td class="v ital" colspan="3">{{ item.FullScientificName }}</td></tr>
+            <tr>
+              <td class="k">Dr.</td><td class="v">{{ item.Drainage }}</td>
+              <td class="k">No. Spec.</td><td class="v">{{ item.Quantity }} of {{ item.TotalNumber }}</td>
+            </tr>
+            <tr>
+              <td class="k">State</td><td class="v">{{ item.LocalityState }}</td>
+              <td class="k">County</td><td class="v">{{ item.LocalityCounty }}</td>
+            </tr>
+            <tr><td class="k">Locality</td><td class="v" colspan="3">{{ item.LocalityString }}</td></tr>
+            <tr>
+              <td class="k">Col. Date</td><td class="v">{{ item.StartDate }}</td>
+              <td class="k">Col. No.</td><td class="v">{{ item.FieldNo }}</td>
+            </tr>
+            <tr><td class="k">Col. by</td><td class="v" colspan="3">{{ item.VerbatimCollectors }}</td></tr>
+          </table>
+          </div>
+          <div class="label-page">
           <el-row type="flex" justify="space-around" align="center">
             <el-col ><div class="header-title-info"> <h2><B> NOTES </B></h2> </div></el-col>
           </el-row>
@@ -238,20 +225,15 @@
             <el-col><div class="header-title-info"> <h3>Loan No.: {{ form.loanNumber }}</h3> </div></el-col>
           </el-row>
 
-          <el-row class="label-item-row" type="flex" justify="space-around"  align="center">
-            <el-col offset="1"><div class="label-item-content"> <span>Family Name</span> <input type="text" class="blank-signature-underline" :value="item.FamilyName" style="width:50%"> </div></el-col>
-            <el-col><div class="label-item-content"> <span>Cat. No</span> <input type="text" class="blank-signature-underline" :value="item.CatalogNumber">  </div></el-col>
-          </el-row>
-
-          <el-row class="label-item-row" type="flex">
-            <el-col offset="1"  span="3"><div class="label-item-content"><span>Species </span> </div></el-col>
-            <el-col  span="21"><div class="label-item-content"><input type="text" class="blank-signature-underline" :value="item.FullScientificName" style="width:100%"> </div></el-col>
-          </el-row>
-
-          <el-row class="label-item-row" type="flex" justify="space-around" style="margin-top:20px">
-            <el-col offset="1"><div class="label-item-content"> <span>{{ item.Quantity + ' of ' + item.TotalNumber }} loaned to {{form.loanPeopleFullName}}</span>  </div></el-col>
-          </el-row>
-          <div style="page-break-after: always;"></div>
+          <table class="lbl-table">
+            <tr>
+              <td class="k">Family Name</td><td class="v">{{ item.FamilyName }}</td>
+              <td class="k">Cat. No</td><td class="v">{{ item.CatalogNumber }}</td>
+            </tr>
+            <tr><td class="k">Species</td><td class="v ital" colspan="3">{{ item.FullScientificName }}</td></tr>
+          </table>
+          <div class="loaned-to">{{ item.Quantity }} of {{ item.TotalNumber }} loaned to {{ form.loanPeopleFullName }}</div>
+          </div>
         </div>
 
       </div>
@@ -489,6 +471,8 @@ import { parseTime } from '@/utils'
 import VueHtml2pdf from 'vue-html2pdf'
 // import { Previewer } from 'pagedjs';
 import { getLoan, generateNewLoanID, generateNewGiftID, getLoanPeople, getLotString, addNewLoan, updateLoan } from '@/api/table'
+import { downloadLoanLabels } from '@/utils/loanLabels'
+import { printLoanLabelsHtml } from '@/utils/labelHtmlPrint'
 const loanType = [
   { key: 'Loan', label: 'Loan' },
   { key: 'Gift', label: 'Gift' },
@@ -649,7 +633,9 @@ export default {
           this.form.text1 = firstItem.Text1,
             this.form.text2 = firstItem.Text2
             this.form.loanPplID = firstItem.LoanPeopleID
-            this.form.loanPeopleFullName = firstItem.FirstName + ' ' + firstItem.LastName
+            // loan_view 有 FullName，但没有 FirstName（拼接会出现 "undefined null"）；优先用 FullName
+            this.form.loanPeopleFullName = firstItem.FullName ||
+              ((firstItem.FirstName || '') + ' ' + (firstItem.LastName || '')).trim()
           this.form.loanPeopleTitle = firstItem.Title
             this.form.agentID = firstItem.AgentID
             this.form.loanAgents = firstItem.LoanAgents
@@ -830,7 +816,7 @@ export default {
           "Lat",
           "LoanAgents",
           "LoanDate",
-          "LoanItemID",
+          'LoanItemID',
           "LoanNumber",
           "LocalityContinent",
           "LocalityCounty",
@@ -877,9 +863,19 @@ export default {
         return v[j]
       }))
     },
+    // Geometry-exact PDF (4x2" label) — page = label, so print at "Actual size", no scaling needed.
+    _loanLabelMeta(){
+      return { loanNumber: this.form.loanNumber, loanPeopleFullName: this.form.loanPeopleFullName }
+    },
     printPartialLabels(){
-      this.$set(this.printObj,"id","printPartials")
-      this.printDiablogVisible = true
+      const rows = this.form.loanDetails || []
+      if(!rows.length){ this.$message.warning('No specimens to print'); return }
+      printLoanLabelsHtml(rows, this._loanLabelMeta())
+    },
+    downloadPartialLabels(){
+      const rows = this.form.loanDetails || []
+      if(!rows.length){ this.$message.warning('No specimens to export'); return }
+      downloadLoanLabels(rows, this._loanLabelMeta())
     },
     printLoan(){
       this.$set(this.printObj,"id","printMe")
@@ -938,7 +934,7 @@ export default {
     },
     loadLoanFromExternal(){
       this.ActionDiablogVisible = false
-      console.log("2")
+      this.form.status = 'edit'
       this.getLoan(this.externalLoanId)
     },
     updateLoanNumber(){
@@ -959,7 +955,7 @@ export default {
     this.getLoanPeople()
     //this.handlePrint()
     if(this.externalLoanId)
-      this.viewLoan()
+      this.loadLoanFromExternal()   // 真正加载已有借阅（viewLoan 里的 getLoan 被注释了，不加载）
     else
       this.addLoan()
 
@@ -1012,12 +1008,32 @@ h2,h3,h4,h5{
   font-size: 22px;
   padding-left:0.6em;
 }
+/* 标签固定列宽 → 下划线起点对齐；用 inline-block 不改 input 宽度，避免溢出 */
+.label-item-content > span{
+  display: inline-block;
+  min-width: 7em;
+}
 .label-item-row{
   padding: 0.1em;
 }
 
 .lot-item-box{
   padding:0.5em 0em;
+}
+/* 标签内容用表格：标签列(k)贴内容宽(auto)，值列(v)底边线=下划线 → 自动对齐、无混合布局 */
+.lbl-table{ width:100%; border-collapse:collapse; font-size:22px; color:#000; }
+.lbl-table td{ padding:3px 8px; vertical-align:bottom; }
+.lbl-table td.k{ white-space:nowrap; width:1%; }
+.lbl-table td.v{ border-bottom:1px solid #000; }
+.lbl-table td.ital{ font-style:italic; }
+.loaned-to{ font-size:22px; margin-top:18px; padding:0 8px; }
+/* 每页一圈虚线框 = 裁切线，撑满整页 → 框落在纸张边缘（连续打印沿框裁）*/
+.label-page{
+  border: 1px dashed #000;
+  padding: 8px 14px;
+  box-sizing: border-box;
+  min-height: 100vh;
+  page-break-after: always;
 }
 
 .footer-content{

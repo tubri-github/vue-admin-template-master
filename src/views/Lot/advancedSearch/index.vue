@@ -288,7 +288,8 @@
 <script>
 import { getLotsAdvanced, getLotsFilterMetadata, getJarSizes } from '@/api/table'
 import Pagination from '@/components/Pagination'
-import { printLabels, downloadLabels, DEFAULT_LABEL } from '@/utils/lotLabels'
+import { downloadLabels, DEFAULT_LABEL } from '@/utils/lotLabels'
+import { printLotLabelsHtml } from '@/utils/labelHtmlPrint'
 import LotComplexTable from '@/views/lotform/updateLot'
 import ConditionEditor from './ConditionEditor'
 
@@ -606,13 +607,15 @@ export default {
     },
 
     // ---------- Label print / PDF ----------
+    // Print: legacy HTML via print-js (flows to fill the 4x2 label, no centered-on-bigger-paper
+    // blanks; dashed cut lines on the page edge). PDF export: still pdfmake geometry-exact.
     handleLabelCommand(cmd) {
       if (cmd === 'settings') { this.labelSettingsVisible = true; return }
       if (!this.list || !this.list.length) { this.$message.warning('No rows to print'); return }
-      if (cmd === 'print-page') printLabels(this.list, this.labelDims)
+      if (cmd === 'print-page') printLotLabelsHtml(this.list)
       else if (cmd === 'pdf-page') downloadLabels(this.list, this.labelDims)
     },
-    printRowLabel(row) { printLabels([row], this.labelDims) },
+    printRowLabel(row) { printLotLabelsHtml([row]) },
     // 编辑单条 lot：复用 updateLot 表单 dialog（关闭后刷新当前页）
     handleEdit(row) {
       this.currCatalogNo = row.CatalogNumber
