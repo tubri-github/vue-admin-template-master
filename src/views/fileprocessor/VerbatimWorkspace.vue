@@ -60,6 +60,18 @@
 
     <!-- 数据处理区域 -->
     <div v-if="currentBatch" class="workspace-content">
+      <!-- Catalog 进度 + 跳 Lots 搜索快捷链接 -->
+      <div class="catalog-progress-banner" style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;margin-bottom:12px;background:#f0f9eb;border:1px solid #e1f3d8;border-radius:4px;">
+        <span style="color:#67c23a;font-size:14px;">
+          <i class="el-icon-finished" />
+          Cataloged <b>{{ progressStats.cataloged || 0 }}</b> / {{ progressStats.fullyCompleted || 0 }} completed
+          <span style="color:#909399;">· {{ Math.max((progressStats.fullyCompleted || 0) - (progressStats.cataloged || 0), 0) }} remaining to catalog</span>
+          <span v-if="(progressStats.total || 0) - (progressStats.fullyCompleted || 0) > 0" style="color:#c0c4cc;">· {{ (progressStats.total || 0) - (progressStats.fullyCompleted || 0) }} pending (deferred)</span>
+        </span>
+        <el-button type="primary" size="mini" plain icon="el-icon-search" @click="goToLotsSearch">
+          View this batch in Lots search →
+        </el-button>
+      </div>
       <!-- 进度概览 -->
       <el-card class="progress-overview-card">
         <div slot="header" class="clearfix">
@@ -638,6 +650,8 @@ export default {
         recordPercentage: 0,
         completionPercentage: 0,
         needsReview: 0,
+        cataloged: 0,          // 已迁移到 Primary（拿到正式 catalog number）
+        remaining: 0,          // 还差多少未 catalog
         hasErrors: 0,          // 有errors的记录数
         hasWarnings: 0,        // 有warnings的记录数
         hasPending: 0,         // 有pending状态的记录数
@@ -925,8 +939,15 @@ export default {
         this.progressStats.recordPercentage = progress.record?.percent || 0;
         this.progressStats.completionPercentage = progress.overall?.percent || 0;
         this.progressStats.needsReview = progress.needs_review?.count || 0;
+        this.progressStats.cataloged = progress.cataloged?.processed || 0;
+        this.progressStats.remaining = progress.cataloged?.remaining != null ? progress.cataloged.remaining : 0;
         // 注意：不覆盖 hasErrors, hasWarnings, pendingTaxonomic 等字段
       }
+    },
+
+    // 跳到 Lots 搜索并预置本批过滤（?batch=xxx）
+    goToLotsSearch() {
+      this.$router.push({ name: 'AdvancedSearchLot', query: { batch: this.selectedBatchId } });
     },
 
     // 刷新进度
@@ -1422,12 +1443,19 @@ export default {
 
         loading.close();
 
-        // 显示成功信息
+        // 显示成功信息（部分迁移：只迁符合条件的，pending 的留待下次 batch）
+        const d = importResult.data || {};
+        const skipped = d.skipped_count || 0;
+        const range = d.catalog_number_range || {};
+        const baseMsg = `Batch completed! Migrated ${d.migrated_count != null ? d.migrated_count : ''} record(s)` +
+          (range.start != null ? ` (catalog ${range.start} - ${range.end})` : '');
         this.$notify({
-          title: 'Success',
-          message: `Batch completed! Generated catalog numbers: ${importResult.data.catalog_number_range.start} - ${importResult.data.catalog_number_range.end}`,
-          type: 'success',
-          duration: 5000
+          title: skipped > 0 ? 'Completed with skipped records' : 'Success',
+          message: skipped > 0
+            ? `${baseMsg}. Skipped ${skipped} pending record(s) — not yet verified, they stay in this batch and will be migrated in a future batch-complete.`
+            : baseMsg,
+          type: skipped > 0 ? 'warning' : 'success',
+          duration: skipped > 0 ? 8000 : 5000
         });
 
         await this.loadBatchData();
@@ -1538,6 +1566,8 @@ export default {
             localityVerified: stats.locality_verified?.count || 0,
             recordVerified: stats.record_verified?.count || 0,
             fullyCompleted: stats.fully_verified?.count || 0,
+            cataloged: stats.cataloged?.count || 0,
+            remaining: stats.cataloged?.remaining != null ? stats.cataloged.remaining : 0,
             speciesPercentage: stats.species_verified?.percentage || 0,
             localityPercentage: stats.locality_verified?.percentage || 0,
             recordPercentage: stats.record_verified?.percentage || 0,

@@ -190,6 +190,7 @@
           </template>
         </el-table-column>
         <el-table-column label="Prev #" width="95" prop="PrevNumber" sortable="custom" />
+        <el-table-column label="Batch #" width="135" prop="batch_serial_id" sortable="custom" />
         <el-table-column label="Scientific Name" min-width="190" prop="FullScientificName" sortable="custom">
           <template slot-scope="{ row }">
             <span>{{ row.FullScientificName || ((row.Genus || '') + ' ' + (row.Species || '')).trim() }}</span>
@@ -210,19 +211,24 @@
         <el-table-column label="Jar" align="center" width="75" prop="JarSize" sortable="custom" />
         <el-table-column label="Type" width="100" prop="TypeStatus" sortable="custom" />
         <el-table-column label="Field No." width="105" prop="FieldNo" sortable="custom" />
-        <el-table-column label="Field No. (verbatim)" width="120" prop="verbatim_fieldno" class-name="vb-col" />
         <el-table-column label="Locality" min-width="180" prop="LocalityString" sortable="custom" />
-        <el-table-column label="Locality (verbatim)" min-width="180" prop="verbatim_locality_string" class-name="vb-col" />
         <el-table-column label="Country" width="95" prop="Country" sortable="custom" />
-        <el-table-column label="Country (verbatim)" width="115" prop="verbatim_country" class-name="vb-col" />
         <el-table-column label="State" width="105" prop="State" sortable="custom" />
-        <el-table-column label="State (verbatim)" width="115" prop="verbatim_state" class-name="vb-col" />
         <el-table-column label="County" width="115" prop="County" sortable="custom" />
-        <el-table-column label="County (verbatim)" width="120" prop="verbatim_county" class-name="vb-col" />
         <el-table-column label="Drainage" width="125" prop="Drainage" sortable="custom" />
-        <el-table-column label="Drainage (verbatim)" width="130" prop="verbatim_drainage" class-name="vb-col" />
         <el-table-column label="Water Body" width="125" prop="WaterBody" sortable="custom" />
+        <el-table-column label="Collector" min-width="150" prop="Collector" sortable="custom" />
+        <el-table-column label="Collected Date" width="130" prop="CollectedDate" sortable="custom" />
+        <!-- verbatim locality 列已下线（新设计：每条记录已建 locality1，改显示外联 locality1）。
+             以下注释保留，日后若要回显 verbatim locality 再启用：
+        <el-table-column label="Field No. (verbatim)" width="120" prop="verbatim_fieldno" class-name="vb-col" />
+        <el-table-column label="Locality (verbatim)" min-width="180" prop="verbatim_locality_string" class-name="vb-col" />
+        <el-table-column label="Country (verbatim)" width="115" prop="verbatim_country" class-name="vb-col" />
+        <el-table-column label="State (verbatim)" width="115" prop="verbatim_state" class-name="vb-col" />
+        <el-table-column label="County (verbatim)" width="120" prop="verbatim_county" class-name="vb-col" />
+        <el-table-column label="Drainage (verbatim)" width="130" prop="verbatim_drainage" class-name="vb-col" />
         <el-table-column label="Water Body (verbatim)" width="140" prop="verbatim_waterbody" class-name="vb-col" />
+        -->
         <el-table-column label="Preparation" width="130" prop="Preparations" />
         <el-table-column label="Prep Count" align="center" width="90" prop="PrepCount" />
         <el-table-column label="Long/Lat" align="center" width="140">
@@ -301,7 +307,8 @@ const SORT_KEY = {
   FamilyName: 'family', DateCataloged: 'date_cataloged', TotalNumber: 'total_number',
   Storage: 'storage', JarSize: 'jar_size', TypeStatus: 'type_status', FieldNo: 'field_no',
   LocalityString: 'locality_string', Country: 'country', State: 'state', County: 'county',
-  Drainage: 'drainage', WaterBody: 'water_body'
+  Drainage: 'drainage', WaterBody: 'water_body',
+  batch_serial_id: 'batch_serial_id', Collector: 'collector', CollectedDate: 'collected_date'
 }
 
 const SAVED_KEY = 'lots_saved_filters'
@@ -365,6 +372,11 @@ export default {
   },
   created() {
     this.fetchMetadata()
+    // 从 batch review 跳转过来：?batch=xxx 预置 batch 过滤 chip
+    const _b = this.$route.query.batch
+    if (_b) {
+      this.chips.push({ field: 'batch_serial_id', op: 'contains', values: [String(_b)] })
+    }
     this.getLots()
   },
   methods: {
