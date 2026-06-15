@@ -141,6 +141,7 @@
             </el-button>
             <el-dropdown-menu slot="dropdown">
               <el-dropdown-item command="print-page">Print labels (this page)</el-dropdown-item>
+              <el-dropdown-item command="print-all">Print labels (all filtered results)</el-dropdown-item>
               <el-dropdown-item command="pdf-page">Download labels PDF (this page)</el-dropdown-item>
               <el-dropdown-item command="settings" divided>Label size settings…</el-dropdown-item>
             </el-dropdown-menu>
@@ -623,9 +624,31 @@ export default {
     // blanks; dashed cut lines on the page edge). PDF export: still pdfmake geometry-exact.
     handleLabelCommand(cmd) {
       if (cmd === 'settings') { this.labelSettingsVisible = true; return }
+      if (cmd === 'print-all') { this.printAllFilteredLabels(); return }
       if (!this.list || !this.list.length) { this.$message.warning('No rows to print'); return }
       if (cmd === 'print-page') printLotLabelsHtml(this.list)
       else if (cmd === 'pdf-page') downloadLabels(this.list, this.labelDims)
+    },
+    // Print every lot matching the CURRENT filters (not just the visible page, not the whole
+    // table): re-run the same buildParams() with page=-1 so the server returns the full filtered
+    // set, then hand it to the HTML label printer. Warn first — this can be a big print job.
+    printAllFilteredLabels() {
+      if (!this.total) { this.$message.warning('No rows to print'); return }
+      const params = Object.assign({}, this.buildParams(), { page: -1 })
+      this.$confirm(
+        `This will print all ${this.total} labels matching the current filters. Large jobs may take a while to render. Continue?`,
+        'Confirm print', { confirmButtonText: 'Print', cancelButtonText: 'Cancel', type: 'warning' }
+      ).then(() => {
+        this.$message({ message: 'Preparing labels, please wait…', type: 'info' })
+        getLotsAdvanced(params).then(res => {
+          const rows = res.data.items || []
+          if (!rows.length) { this.$message.warning('No rows to print'); return }
+          printLotLabelsHtml(rows)
+        }).catch(err => {
+          console.error('Print-all fetch failed:', err)
+          this.$message.error('Failed to load labels')
+        })
+      }).catch(() => {})
     },
     printRowLabel(row) { printLotLabelsHtml([row]) },
     // 编辑单条 lot：复用 updateLot 表单 dialog（关闭后刷新当前页）

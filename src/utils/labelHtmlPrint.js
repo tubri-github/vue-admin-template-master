@@ -9,6 +9,15 @@ function esc(v) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+// Family field shows the NAME (the number alone isn't obvious), with the number in parens when
+// present — matches the search list + loan label "FamilyName" display. Returns escaped HTML.
+function familyText(row) {
+  const name = esc(row.FamilyName)
+  const num = esc(row.FamilyNumber)
+  if (name && num) return name + ' (' + num + ')'
+  return name || num
+}
+
 // Shared print CSS. Like the LEGACY version: NO @page size and NO page-break — each label is just
 // a content-height block that FLOWS continuously down the strip with a gap between labels. Forcing
 // fixed 2in pages (@page size + page-break) drifted against the continuous feed so the blank grew
@@ -31,12 +40,20 @@ const LABEL_STYLE = `
   .lbl.notes { min-height: 1.6in; }
   .hdr { text-align: center; font-weight: bold; font-size: 13px; margin-bottom: 2px; }
   .bd { display: flex; align-items: stretch; }
-  .t { flex: 1; border-collapse: collapse; font-size: 12px; }
+  /* flex-basis:0 + min-width:0 so the table always fills the row (short content) and wraps
+     rather than pushing the number column (long content) — keeps the number's X position fixed. */
+  .t { flex: 1 1 0; min-width: 0; width: 100%; border-collapse: collapse; font-size: 12px; }
   .t td { padding: 1px 5px; vertical-align: bottom; line-height: 1.15; }
-  .t td.k { font-weight: bold; white-space: nowrap; width: 1%; }
+  /* No nowrap + width:1% → the label column shrinks to the longest WORD, so the two long
+     labels ("Scientific Name", "No. of Specimens") wrap to two lines and the column stays
+     narrow. Short labels (Dr., State, …) then sit right next to their underline — no big gap.
+     vertical-align:bottom keeps each value (and its underline) on the bottom line, so a
+     wrapped label making the row taller never leaves the value floating above its line. */
+  .t td.k { font-weight: bold; width: 1%; }
   .t td.v { border-bottom: 1px solid #000; }
   .t td.i { font-style: italic; }
-  .vn { writing-mode: vertical-rl; text-orientation: mixed; font-size: 30px; font-weight: bold;
+  /* fixed-size flex item: the big number never grows/shrinks with content, so it stays put. */
+  .vn { flex: 0 0 auto; writing-mode: vertical-rl; text-orientation: mixed; font-size: 30px; font-weight: bold;
         text-align: center; padding-left: 4px; letter-spacing: 1px; }
   .loaned { font-size: 13px; margin-top: 10px; }
 `
@@ -49,7 +66,7 @@ function lotLabelInner(row) {
     <div class="hdr">TULANE UNIVERSITY COLLECTIONS</div>
     <div class="bd">
       <table class="t">
-        <tr><td class="k">Family No.</td><td class="v">${esc(row.FamilyNumber)}</td><td class="k">Cat. No.</td><td class="v">${esc(row.CatalogNumber)}</td></tr>
+        <tr><td class="k">Family</td><td class="v">${familyText(row)}</td><td class="k">Cat. No.</td><td class="v">${esc(row.CatalogNumber)}</td></tr>
         <tr><td class="k">Scientific Name</td><td class="v i" colspan="3">${name}</td></tr>
         <tr><td class="k">Dr.</td><td class="v">${esc(row.Drainage)}</td><td class="k">No. of Specimens</td><td class="v">${esc(row.TotalNumber)}</td></tr>
         <tr><td class="k">State</td><td class="v">${esc(row.State)}</td><td class="k">County</td><td class="v">${esc(row.County)}</td></tr>

@@ -24,7 +24,9 @@ export const DEFAULT_LABEL = {
 function val(v) { return (v === null || v === undefined) ? '' : String(v) }
 
 // Field-name cell (no border, bold, no-wrap — keeps the name on one line so a wrapped
-// name can't grow the row and leave the value floating above the underline).
+// name can't grow the row and leave the value floating above the underline). Left-aligned:
+// pdfmake has no cell vertical-align, so wrapping labels here would drop values off their
+// underline — the HTML print path (labelHtmlPrint.js) is the one that wraps (option B).
 function lbl(t) { return { text: t, bold: true, noWrap: true, border: [false, false, false, false] } }
 // Value cell (bottom border only = underline; uses a space when empty so the writable line still shows).
 function fld(v, opts) {
@@ -32,14 +34,24 @@ function fld(v, opts) {
 }
 const SPAN = {} // placeholder cell for colSpan
 
+// Family field: show the family NAME (the number alone isn't obvious), with the number
+// in parens when present — matches the search list's "FamilyName(FamilyNumber)" display.
+function familyText(row) {
+  const name = val(row.FamilyName)
+  const num = val(row.FamilyNumber)
+  if (name && num) return name + ' (' + num + ')'
+  return name || num
+}
+
 // Big catalog number running down the right edge (legacy `writing-mode: vertical-rl`, 50px).
 // pdfmake can't rotate text (and SVG rotate breaks this build), so stack the characters
 // vertically — one per line — which reads top-to-bottom down the side just like the old label.
-function verticalNumber(num) {
+function verticalNumber(num, width) {
+  const w = width || 16
   const s = val(num)
-  if (!s) return { text: '', width: 2 }
+  if (!s) return { text: '', width: w }
   return {
-    width: 'auto',
+    width: w, // FIXED width so the number column never shifts with content length
     stack: s.split('').map(function(ch) {
       return { text: ch === ' ' ? ' ' : ch, fontSize: 17, bold: true, alignment: 'center', lineHeight: 0.92 }
     })
@@ -48,9 +60,9 @@ function verticalNumber(num) {
 
 // One label: TULANE header, a table (every value underlined even when empty), and the
 // vertical catalog number on the right — fields/labels match the legacy TULANE lots label.
-function labelBody(row) {
+function labelBody(row, geom) {
   const body = [
-    [lbl('Family No.'), fld(row.FamilyNumber), lbl('Cat. No.'), fld(row.CatalogNumber)],
+    [lbl('Family'), fld(familyText(row)), lbl('Cat. No.'), fld(row.CatalogNumber)],
     [lbl('Scientific Name'), fld(row.FullScientificName || row.ScientificName, { colSpan: 3, italics: true }), SPAN, SPAN],
     [lbl('Dr.'), fld(row.Drainage), lbl('No. of Specimens'), fld(row.TotalNumber)],
     [lbl('State'), fld(row.State), lbl('County'), fld(row.County)],
@@ -59,7 +71,10 @@ function labelBody(row) {
     [lbl('Col. by'), fld(row.VerbatimCollectors, { colSpan: 3 }), SPAN, SPAN]
   ]
   const table = {
-    width: '*',
+    // FIXED width (not '*') — pdfmake renders a star-width table at its content width, which
+    // slides the number column in/out with content. A fixed width pins the table (and the
+    // number after it) so the big number always sits at the same spot.
+    width: geom.tableW,
     table: { widths: ['auto', '*', 'auto', '*'], body },
     layout: {
       defaultBorder: false,
@@ -70,16 +85,16 @@ function labelBody(row) {
     }
   }
   return {
-    columns: [table, verticalNumber(row.CatalogNumber)],
-    columnGap: 2
+    columns: [table, verticalNumber(row.CatalogNumber, geom.numW)],
+    columnGap: geom.gap
   }
 }
 
 // Blocks for one label: header + body (cut lines are drawn as a page-edge background).
-function labelBlocks(row) {
+function labelBlocks(row, geom) {
   return [
     { text: 'TULANE UNIVERSITY COLLECTIONS', bold: true, fontSize: 9, alignment: 'center', margin: [0, 0, 0, 2] },
-    labelBody(row)
+    labelBody(row, geom)
   ]
 }
 
@@ -90,9 +105,16 @@ export function buildLabelDoc(rows, dims) {
   const px = (Number(d.padXmm) || 0) * MM
   const py = (Number(d.padYmm) || 0) * MM
   const pageW = d.widthIn * PT_PER_IN
+  // Content area = page minus the left (offset + pad) and right (pad) margins below.
+  // Split it into a fixed-width field table + gap + fixed-width number column, so the
+  // number's X position is deterministic regardless of how long any field's text is.
+  const contentW = pageW - ox - 2 * px
+  const numW = 16
+  const gap = 2
+  const geom = { numW, gap, tableW: Math.max(40, contentW - numW - gap) }
   const content = []
   rows.forEach((row, i) => {
-    const blocks = labelBlocks(row)
+    const blocks = labelBlocks(row, geom)
     if (i > 0) blocks[0] = Object.assign({}, blocks[0], { pageBreak: 'before' })
     content.push.apply(content, blocks)
   })
