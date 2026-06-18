@@ -149,6 +149,17 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="Type Status" prop="typeStatus">
+              <el-input
+                v-model="localRecord.typeStatus"
+                placeholder="e.g., Holotype, Paratype"
+                @change="handleFieldChange">
+              </el-input>
+            </el-form-item>
+          </el-col>
+        </el-row>
       </el-card>
 
       <!-- 追踪信息 -->
@@ -173,6 +184,17 @@
               <el-input
                 v-model="localRecord.inventory"
                 placeholder="Internal inventory number"
+                @change="handleFieldChange">
+              </el-input>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="Collector" prop="collector">
+              <el-input
+                v-model="localRecord.collector"
+                placeholder="Collector name(s)"
                 @change="handleFieldChange">
               </el-input>
             </el-form-item>
@@ -365,6 +387,10 @@ export default {
           jarSize: newRecord.jarSize || '',
           prevNumber: newRecord.prevNumber || '',
           inventory: newRecord.inventory || '',
+          // TypeStatus (record_data) + Collector (verbatim locality): read from the full
+          // nested _apiData so they bind reliably regardless of the flattened shape.
+          typeStatus: (newRecord._apiData && newRecord._apiData.record_data && newRecord._apiData.record_data.type_status) || newRecord.typeStatus || '',
+          collector: (newRecord._apiData && newRecord._apiData.verbatim_data && newRecord._apiData.verbatim_data.locality && newRecord._apiData.verbatim_data.locality.collector) || '',
           remarks: newRecord.remarks || '',
 
           // 从父组件获取实际的验证状态
@@ -463,6 +489,8 @@ export default {
         jarSize: this.localRecord.jarSize,
         prevNumber: this.localRecord.prevNumber,
         inventory: this.localRecord.inventory,
+        typeStatus: this.localRecord.typeStatus,
+        collector: this.localRecord.collector,
         remarks: this.localRecord.remarks,
         recordVerificationStatus: this.localRecord.recordVerificationStatus
       };

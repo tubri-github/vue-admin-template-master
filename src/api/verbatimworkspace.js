@@ -56,6 +56,15 @@ export function exportBatchResults(batchSerialId) {
   });
 }
 
+// 下载该批次保留的原始上传源文件
+export function downloadBatchSourceFile(batchSerialId) {
+  return request({
+    url: api_prefix + `/batches/${batchSerialId}/source-file`,
+    method: 'get',
+    responseType: 'blob'
+  });
+}
+
 // Verbatim 数据获取 API
 export function getVerbatimTaxonomic(verbatimTaxonomicId) {
   return request({
@@ -182,6 +191,15 @@ export function applyFamilyTaxon(record_id, family_id) {
     url: api_prefix + `/records/${record_id}/apply-family-taxon`,
     method: 'post',
     data: { family_id }
+  })
+}
+
+// 创建 CoF 建议的 taxon（本地缺该 accepted 名时）并指给该记录
+export function createCofTaxon(record_id, payload) {
+  return request({
+    url: api_prefix + `/records/${record_id}/create-cof-taxon`,
+    method: 'post',
+    data: payload
   })
 }
 

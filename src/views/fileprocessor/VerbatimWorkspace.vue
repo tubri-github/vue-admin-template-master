@@ -52,6 +52,22 @@
                 <i class="el-icon-time"></i>
                 {{formatDate(currentBatch.importDate)}}
               </span>
+              <span class="batch-info-item" v-if="currentBatch.sourceFile">
+                <el-button type="text" icon="el-icon-download" @click="downloadSourceFile">
+                  Source file
+                </el-button>
+              </span>
+              <span class="batch-info-item" v-if="currentBatch.fieldMappings">
+                <el-popover placement="bottom" trigger="click" width="320" title="Import field mapping">
+                  <el-table :data="mappingRows" size="mini" :show-header="true">
+                    <el-table-column prop="field" label="Field" width="150"></el-table-column>
+                    <el-table-column prop="column" label="Source column"></el-table-column>
+                  </el-table>
+                  <el-button slot="reference" type="text" icon="el-icon-connection">
+                    Mapping
+                  </el-button>
+                </el-popover>
+              </span>
             </div>
           </el-col>
         </el-row>
@@ -353,6 +369,17 @@
                     </el-tag>
                   </el-tooltip>
                 </div>
+                <!-- 来源科 ≠ 匹配科：分类问题，显眼提示在 species 这边 -->
+                <div v-if="familyMismatch(scope.row)" class="suggestion-info">
+                  <el-tooltip
+                    :content="`Imported family '${familyMismatch(scope.row).from}' differs from matched family '${familyMismatch(scope.row).to}'. Confirm the family.`"
+                    placement="top">
+                    <el-tag size="mini" type="danger">
+                      <i class="el-icon-warning"></i>
+                      Family: {{familyMismatch(scope.row).from}} → {{familyMismatch(scope.row).to}}
+                    </el-tag>
+                  </el-tooltip>
+                </div>
                 <!-- 显示验证者信息 -->
                 <div v-if="scope.row.verificationInfo && scope.row.verificationInfo.species.verified_by_name" class="verification-info">
                   <el-tooltip :content="`Verified by ${scope.row.verificationInfo.species.verified_by_name} at ${formatDateTime(scope.row.verificationInfo.species.verified_at)}`" placement="top">
@@ -452,6 +479,22 @@
                 </div>
               </div>
               <span v-else class="text-gray-400">Not matched</span>
+
+              <!-- CoF 建议创建：本地缺该 accepted 名时，与上面的 DB 建议并列 -->
+              <div v-if="scope.row.cofCreate" class="cof-suggest"
+                   style="margin-top:6px; border-top:1px dashed #dcdfe6; padding-top:4px;">
+                <div class="text-xs" style="color:#E6A23C;">
+                  <i class="el-icon-cpu"></i>
+                  CoF: {{ cofCreateName(scope.row.cofCreate) }}
+                  <span v-if="scope.row.cofCreate.family">({{ scope.row.cofCreate.family }})</span>
+                </div>
+                <el-button
+                  type="warning" size="mini" plain
+                  :loading="creatingCofRecordId === scope.row.id"
+                  @click.stop="createCofTaxon(scope.row)">
+                  Create &amp; apply
+                </el-button>
+              </div>
             </template>
           </el-table-column>
 
@@ -579,9 +622,11 @@ import {
   getBatchInfo,
   updateVerbatimRecord,
   exportBatchResults,
+  downloadBatchSourceFile,
   markBatchCompleted,
   confirmBatchImport,
-  batchUpdateVerificationStatus
+  batchUpdateVerificationStatus,
+  createCofTaxon
 } from '@/api/verbatimworkspace'
 
 export default {
@@ -672,10 +717,20 @@ export default {
       performingBatchAction: false,
 
       // Apply suggestion loading state
-      applyingRecordId: null
+      applyingRecordId: null,
+      creatingCofRecordId: null
     }
   },
   computed: {
+    // 把导入时的 field mapping（{field: 源列}）转成表格行展示
+    mappingRows() {
+      const m = this.currentBatch && this.currentBatch.fieldMappings;
+      if (!m) return [];
+      return Object.keys(m)
+        .filter(k => m[k])
+        .map(k => ({ field: k, column: m[k] }));
+    },
+
     pendingCount() {
       return this.progressStats.total - this.progressStats.fullyCompleted;
     },
@@ -771,7 +826,9 @@ export default {
             fileName: batchResponse.data.file_name || `Batch ${batchResponse.data.batch_serial_id}`,
             recordCount: batchResponse.data.total_records,
             importDate: batchResponse.data.import_date,
-            status: batchResponse.data.status
+            status: batchResponse.data.status,
+            sourceFile: batchResponse.data.source_file || null,
+            fieldMappings: (batchResponse.data.metadata && batchResponse.data.metadata.field_mappings) || null
           };
 
           // 设置进度统计
@@ -824,6 +881,7 @@ export default {
               jarSize: record.record_data?.jar_size || null,
               prevNumber: record.record_data?.prev_number || null,
               inventory: record.record_data?.inventory || null,
+              typeStatus: record.record_data?.type_status || null,
               remarks: record.record_data?.remarks || null,
 
               verbatimTaxonomic: record.verbatim_data?.taxonomic ? {
@@ -891,6 +949,9 @@ export default {
                 matchedFamilyId: record.match_suggestions.taxonomic.family_only.matched_family_id,
                 existsInDb: record.match_suggestions.taxonomic.family_only.exists_in_db
               } : null,
+
+              // CoF accepted 名本地缺失 -> 建议创建（genus/species/family 来自 CoF）
+              cofCreate: record.match_suggestions?.taxonomic?.cof_create || null,
 
               verificationInfo: record.verification_info || null,
               processingStatus: record.processing_status,
@@ -1230,6 +1291,54 @@ export default {
       }
     },
 
+    // CoF 建议创建的显示名
+    cofCreateName(cof) {
+      if (!cof) return '';
+      return [cof.genus, cof.species, cof.subspecies].filter(Boolean).join(' ');
+    },
+
+    // 创建 CoF 建议的 taxon（+ 必要时建科）并指给该记录
+    async createCofTaxon(record) {
+      const cof = record.cofCreate;
+      if (!cof || !cof.genus || !cof.species) {
+        this.$message.warning('No CoF suggestion to create');
+        return;
+      }
+      this.creatingCofRecordId = record.id;
+      try {
+        const response = await createCofTaxon(record.id, {
+          genus: cof.genus,
+          species: cof.species,
+          subspecies: cof.subspecies || null,
+          family: cof.family || null
+        });
+        if (response.code === 20000) {
+          const d = response.data || {};
+          record.taxonId = d.taxon_id;
+          record.taxonomic = {
+            TaxonID: d.taxon_id,
+            FullName: d.full_name || this.cofCreateName(cof),
+            Family: cof.family,
+            Genus: cof.genus,
+            Species: cof.species
+          };
+          if (record.verificationInfo) {
+            record.verificationInfo.species = { ...record.verificationInfo.species, status: 'verified' };
+          }
+          if (record.processingStatus) record.processingStatus.taxonomic = 'verified';
+          this.$message.success(`Created & applied ${record.taxonomic.FullName}`);
+          this.fetchVerificationSummary();
+        } else {
+          this.$message.error(response.message || 'Failed to create CoF taxon');
+        }
+      } catch (error) {
+        this.$message.error('Failed to create CoF taxon');
+        console.error(error);
+      } finally {
+        this.creatingCofRecordId = null;
+      }
+    },
+
     // 编辑记录
     editRecord(record) {
       console.log('Editing record:', record);
@@ -1400,6 +1509,30 @@ export default {
       }
     },
 
+    // 下载该批次保留的原始上传源文件
+    async downloadSourceFile() {
+      const sf = this.currentBatch && this.currentBatch.sourceFile;
+      if (!sf) {
+        this.$message.warning('No source file is available for this batch');
+        return;
+      }
+      try {
+        const response = await downloadBatchSourceFile(this.selectedBatchId);
+        const blob = new Blob([response.data]);
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = sf.file_name || `batch_${this.selectedBatchId}_source`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      } catch (error) {
+        this.$message.error('Failed to download source file');
+        console.error(error);
+      }
+    },
+
     // 标记批次完成
     async markBatchCompleted() {
       if (this.pendingCount > 0) {
@@ -1505,6 +1638,16 @@ export default {
     },
 
     // 获取 warnings 列表
+    // 来源(verbatim)科 与 匹配到的 taxon 科 是否不一致（分类问题，显示在 Species Status 列）
+    familyMismatch(record) {
+      const src = record.verbatimTaxonomic && record.verbatimTaxonomic.verbatimFamily;
+      const matched = record.taxonomic && record.taxonomic.Family;
+      if (src && matched &&
+          String(src).trim().toLowerCase() !== String(matched).trim().toLowerCase()) {
+        return { from: src, to: matched };
+      }
+      return null;
+    },
     getWarnings(record) {
       if (!record.verificationInfo || !record.verificationInfo.warnings) return [];
       return record.verificationInfo.warnings.filter(w => w.severity === 'warning');

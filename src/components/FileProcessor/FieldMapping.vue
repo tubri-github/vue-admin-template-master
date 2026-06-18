@@ -351,8 +351,14 @@ export default {
   },
   data() {
     return {
-      // Required fields (only prevNumber)
+      // Required fields
       requiredFields: [
+        {
+          key: 'sourceId',
+          label: 'Source unique ID',
+          description: 'A column whose value is unique within this file (e.g. the source Primary ID). Saved as source_primary_id to trace each record back to the source dataset.',
+          required: true
+        },
         {
           key: 'prevNumber',
           label: 'Previous Number',
@@ -363,6 +369,12 @@ export default {
 
       // Basic occurrence fields
       occurrenceFields: [
+        {
+          key: 'collectorName',
+          label: 'Collector Name',
+          description: 'Name(s) of the collector(s)',
+          required: false
+        },
         {
           key: 'collectionDate',
           label: 'Collection Date',
@@ -465,6 +477,12 @@ export default {
 
       // Storage and management fields
       storageFields: [
+        {
+          key: 'typeStatus',
+          label: 'Type Status',
+          description: 'Nomenclatural type status (e.g., Holotype, Paratype)',
+          required: false
+        },
         {
           key: 'storage',
           label: 'Storage',

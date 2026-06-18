@@ -289,8 +289,9 @@ export default {
   methods: {
     goToBatchReview() {
       // 跳转到 VerbatimWorkspace (Batch Review) 并带上 batchSerialId
+      // 路由实际是 /fileprocessor/review（name: reviewulm），之前写成 verbatim-workspace 导致跳转失败
       this.$router.push({
-        path: '/fileprocessor/verbatim-workspace',
+        name: 'reviewulm',
         query: {
           batchId: this.importResult.batchSerialId
         }

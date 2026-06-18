@@ -554,6 +554,8 @@ export default {
           jar_size: this.localRecord.jarSize,
           prev_number: this.localRecord.prevNumber,
           inventory: this.localRecord.inventory,
+          type_status: this.localRecord.typeStatus,
+          collector_name: this.localRecord.collector,
           remarks: this.localRecord.remarks,
 
           // 验证状态更新 - 确保包含所有三个状态
