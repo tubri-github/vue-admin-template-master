@@ -13,590 +13,647 @@
 -->
 <template>
   <div class="synonym-review">
-    <!-- Header Card: Stats & Scan -->
-    <el-card class="stats-card">
-      <div slot="header" class="clearfix">
-        <span class="text-lg font-medium">Taxon Name Review</span>
-        <el-button
-          style="float: right; margin-left: 10px;"
-          type="primary"
-          size="small"
-          :loading="scanning"
-          :disabled="!configStatus.accessible"
-          @click="handleScan">
-          <i class="el-icon-search"></i>
-          Scan All Taxon Names
-        </el-button>
-        <el-button
-          style="float: right;"
-          type="text"
-          size="small"
-          @click="checkConfig">
-          <i class="el-icon-connection"></i>
-          Check DB Connection
-        </el-button>
-      </div>
+    <el-tabs v-model="activeTab" type="card">
+      <!--
+        Order is the working order, not importance: the first two tabs change what the taxon
+        table says, and the recheck reads that table. Running the whole-DB check before the
+        data-quality decisions are made just produces rows that a later decision deletes --
+        which is exactly what happened with 623 already-settled family rows.
+      -->
+      <el-tab-pane label="Taxon Data Quality" name="quality">
+        <data-quality-panel
+          v-if="activeTab==='quality'"
+          :focus-pair="focusPair"
+          @data-changed="markRescanNeeded"
+        />
+      </el-tab-pane>
 
-      <!-- Config Warning -->
-      <el-alert
-        v-if="configChecked && !configStatus.accessible"
-        title="TaxonRank database is not accessible. Please configure TAXON_DB_* in .env"
-        type="warning"
-        show-icon
-        :closable="false"
-        style="margin-bottom: 16px;">
-      </el-alert>
+      <el-tab-pane label="Genus Column Repair" name="genus">
+        <genus-repair-panel v-if="activeTab==='genus'" @data-changed="markRescanNeeded" />
+      </el-tab-pane>
 
-      <!-- Stats Overview -->
-      <el-row :gutter="16">
-        <el-col :span="3">
-          <div class="stat-item">
-            <div class="stat-number">{{ stats.total_taxon_count || 0 }}</div>
-            <div class="stat-label">Total Taxa</div>
-          </div>
-        </el-col>
-        <el-col :span="3">
-          <div class="stat-item">
-            <div class="stat-number total">{{ stats.total_reviews || 0 }}</div>
-            <div class="stat-label">Issues Found</div>
-          </div>
-        </el-col>
-        <el-col :span="3">
-          <div class="stat-item">
-            <div class="stat-number pending">{{ stats.pending || 0 }}</div>
-            <div class="stat-label">Pending</div>
-          </div>
-        </el-col>
-        <el-col :span="3">
-          <div class="stat-item">
-            <div class="stat-number accepted">{{ stats.accepted || 0 }}</div>
-            <div class="stat-label">Accepted</div>
-          </div>
-        </el-col>
-        <el-col :span="3">
-          <div class="stat-item">
-            <div class="stat-number rejected">{{ stats.rejected || 0 }}</div>
-            <div class="stat-label">Rejected</div>
-          </div>
-        </el-col>
-        <el-col :span="3">
-          <div class="stat-item">
-            <div class="stat-number corrected">{{ stats.corrected || 0 }}</div>
-            <div class="stat-label">Corrected</div>
-          </div>
-        </el-col>
-        <el-col :span="3">
-          <div class="stat-item">
-            <div class="stat-number skipped">{{ stats.skipped || 0 }}</div>
-            <div class="stat-label">Skipped</div>
-          </div>
-        </el-col>
-      </el-row>
-      <!-- Issue type breakdown -->
-      <el-divider content-position="left" class="stat-divider">Issue Breakdown</el-divider>
-      <el-row :gutter="16">
-        <el-col :span="8">
-          <div class="stat-item-inline">
-            <el-tag type="warning" size="small" effect="plain">Spelling</el-tag>
-            <span class="stat-inline-number">{{ stats.spelling_issues || 0 }}</span>
-          </div>
-        </el-col>
-        <el-col :span="8">
-          <div class="stat-item-inline">
-            <el-tag type="danger" size="small" effect="plain">Synonym</el-tag>
-            <span class="stat-inline-number">{{ stats.synonym_issues || 0 }}</span>
-          </div>
-        </el-col>
-        <el-col :span="8">
-          <div class="stat-item-inline">
-            <el-tag type="" size="small" effect="plain">Spelling + Synonym</el-tag>
-            <span class="stat-inline-number">{{ stats.spelling_synonym_issues || 0 }}</span>
-          </div>
-        </el-col>
-      </el-row>
-    </el-card>
+      <el-tab-pane name="recheck">
+        <span slot="label">
+          Whole-DB Taxonomic Recheck
+          <el-badge v-if="rescanNeeded" is-dot class="stale-dot" />
+        </span>
+        <!-- a family disagreement is settled once in the other tab, not per taxon here -->
+        <recheck-panel
+          v-if="activeTab==='recheck'"
+          :rescan-needed="rescanNeeded"
+          @goto-family="openFamilyDecision"
+          @scanned="rescanNeeded = false"
+        />
+      </el-tab-pane>
 
-    <!-- Filter & Actions Bar -->
-    <el-card class="filter-card">
-      <el-row :gutter="16" type="flex" align="middle">
-        <el-col :span="12">
-          <el-radio-group v-model="filterStatus" size="small" @change="handleFilterChange">
-            <el-radio-button label="">All</el-radio-button>
-            <el-radio-button label="pending">Pending</el-radio-button>
-            <el-radio-button label="accepted">Accepted</el-radio-button>
-            <el-radio-button label="rejected">Rejected</el-radio-button>
-            <el-radio-button label="corrected">Corrected</el-radio-button>
-          </el-radio-group>
-        </el-col>
-        <el-col :span="3">
-          <el-select
-            v-model="filterIssue"
-            placeholder="Issue type"
-            size="small"
-            clearable
-            @change="handleFilterChange">
-            <el-option label="Spelling" value="spelling"></el-option>
-            <el-option label="Synonym" value="synonym"></el-option>
-            <el-option label="Spelling+Synonym" value="spelling+synonym"></el-option>
-          </el-select>
-        </el-col>
-        <el-col :span="5">
-          <el-input
-            v-model="searchText"
-            placeholder="Search taxon name..."
-            prefix-icon="el-icon-search"
-            size="small"
-            clearable
-            @clear="handleSearch"
-            @keyup.enter.native="handleSearch">
-          </el-input>
-        </el-col>
-        <el-col :span="4" style="text-align: right;">
-          <el-dropdown
-            trigger="click"
-            :disabled="selectedRows.length === 0"
-            @command="handleBatchAction">
-            <el-button size="small" :disabled="selectedRows.length === 0">
-              Batch ({{ selectedRows.length }})
-              <i class="el-icon-arrow-down el-icon--right"></i>
+      <!--
+        The original name/synonym review. Superseded by the recheck tab, which covers the
+        same ground with categories, preview, undo history and a dismiss path. Hidden rather
+        than deleted: flip showLegacyTab back to true if something turns out to be missing
+        here that the recheck tab does not do.
+      -->
+      <el-tab-pane v-if="showLegacyTab" label="Name / Synonym Review" name="synonym">
+        <!-- Header Card: Stats & Scan -->
+        <el-card class="stats-card">
+          <div slot="header" class="clearfix">
+            <span class="text-lg font-medium">Taxon Name Review</span>
+            <el-button
+              style="float: right; margin-left: 10px;"
+              type="primary"
+              size="small"
+              :loading="scanning"
+              :disabled="!configStatus.accessible"
+              @click="handleScan"
+            >
+              <i class="el-icon-search" />
+              Scan All Taxon Names
             </el-button>
-            <el-dropdown-menu slot="dropdown">
-              <el-dropdown-item command="batch-accept">
-                <i class="el-icon-check"></i> Accept Selected
-              </el-dropdown-item>
-              <el-dropdown-item command="batch-reject">
-                <i class="el-icon-close"></i> Reject Selected
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </el-dropdown>
-        </el-col>
-      </el-row>
-    </el-card>
+            <el-button
+              style="float: right;"
+              type="text"
+              size="small"
+              @click="checkConfig"
+            >
+              <i class="el-icon-connection" />
+              Check DB Connection
+            </el-button>
+          </div>
 
-    <!-- Review Table -->
-    <el-card class="table-card">
-      <el-table
-        ref="reviewTable"
-        v-loading="loading"
-        :data="reviewList"
-        border
-        fit
-        highlight-current-row
-        @selection-change="handleSelectionChange"
-        :row-class-name="tableRowClassName"
-        style="width: 100%">
+          <!-- Config Warning -->
+          <el-alert
+            v-if="configChecked && !configStatus.accessible"
+            title="TaxonRank database is not accessible. Please configure TAXON_DB_* in .env"
+            type="warning"
+            show-icon
+            :closable="false"
+            style="margin-bottom: 16px;"
+          />
 
-        <el-table-column type="selection" width="40" :selectable="isSelectable"></el-table-column>
-
-        <el-table-column prop="taxon_id" label="ID" width="70" sortable></el-table-column>
-
-        <!-- Issue Type -->
-        <el-table-column label="Issue" width="110" align="center">
-          <template slot-scope="{ row }">
-            <el-tag size="mini" :type="getIssueTagType(row.issue_type)">
-              {{ getIssueLabel(row.issue_type) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-
-        <!-- Name Comparison: genus / species / family with diff highlighting -->
-        <el-table-column label="Name Comparison" min-width="420">
-          <template slot-scope="{ row }">
-            <div class="name-compare">
-              <div class="compare-header">
-                <span class="compare-cell label-cell"></span>
-                <span class="compare-cell">Genus</span>
-                <span class="compare-cell">Species</span>
-                <span class="compare-cell family-col">Family</span>
+          <!-- Stats Overview -->
+          <el-row :gutter="16">
+            <el-col :span="3">
+              <div class="stat-item">
+                <div class="stat-number">{{ stats.total_taxon_count || 0 }}</div>
+                <div class="stat-label">Total Taxa</div>
               </div>
-              <!-- Original -->
-              <div class="compare-row">
-                <span class="compare-cell label-cell">Original</span>
-                <span class="compare-cell sci-name">{{ row.current_genus }}</span>
-                <span class="compare-cell sci-name">{{ row.current_species }}</span>
-                <span class="compare-cell family-col family-text">{{ row.current_family || '-' }}</span>
+            </el-col>
+            <el-col :span="3">
+              <div class="stat-item">
+                <div class="stat-number total">{{ stats.total_reviews || 0 }}</div>
+                <div class="stat-label">Issues Found</div>
               </div>
-              <!-- Corrected (only for spelling issues) -->
-              <div v-if="row.corrected_full_name" class="compare-row">
-                <span class="compare-cell label-cell">Corrected</span>
-                <span class="compare-cell sci-name" :class="{ 'field-changed': row.corrected_genus !== row.current_genus }">
-                  {{ row.corrected_genus }}
-                </span>
-                <span class="compare-cell sci-name" :class="{ 'field-changed': row.corrected_species !== row.current_species }">
-                  {{ row.corrected_species }}
-                </span>
-                <span class="compare-cell family-col family-text">
-                  <span class="conf-badge">{{ row.correction_type }} {{ Math.round((row.correction_confidence || 0) * 100) }}%</span>
-                </span>
+            </el-col>
+            <el-col :span="3">
+              <div class="stat-item">
+                <div class="stat-number pending">{{ stats.pending || 0 }}</div>
+                <div class="stat-label">Pending</div>
               </div>
-              <!-- Suggested Valid -->
-              <div class="compare-row">
-                <span class="compare-cell label-cell">Valid</span>
-                <span class="compare-cell sci-name"
-                  :class="{ 'field-changed': row.suggested_genus !== (row.corrected_genus || row.current_genus) }">
-                  {{ row.suggested_genus }}
-                </span>
-                <span class="compare-cell sci-name"
-                  :class="{ 'field-changed': row.suggested_species !== (row.corrected_species || row.current_species) }">
-                  {{ row.suggested_species }}
-                </span>
-                <span class="compare-cell family-col family-text">-</span>
+            </el-col>
+            <el-col :span="3">
+              <div class="stat-item">
+                <div class="stat-number accepted">{{ stats.accepted || 0 }}</div>
+                <div class="stat-label">Accepted</div>
               </div>
-              <!-- Final (if specialist overrode) -->
-              <div v-if="row.final_valid_name && row.final_valid_name !== row.suggested_full_name" class="compare-row final-row">
-                <span class="compare-cell label-cell">Final</span>
-                <span class="compare-cell sci-name final-name" style="flex: 3;">{{ row.final_valid_name }}</span>
+            </el-col>
+            <el-col :span="3">
+              <div class="stat-item">
+                <div class="stat-number rejected">{{ stats.rejected || 0 }}</div>
+                <div class="stat-label">Rejected</div>
               </div>
-            </div>
-          </template>
-        </el-table-column>
+            </el-col>
+            <el-col :span="3">
+              <div class="stat-item">
+                <div class="stat-number corrected">{{ stats.corrected || 0 }}</div>
+                <div class="stat-label">Corrected</div>
+              </div>
+            </el-col>
+            <el-col :span="3">
+              <div class="stat-item">
+                <div class="stat-number skipped">{{ stats.skipped || 0 }}</div>
+                <div class="stat-label">Skipped</div>
+              </div>
+            </el-col>
+          </el-row>
+          <!-- Issue type breakdown -->
+          <el-divider content-position="left" class="stat-divider">Issue Breakdown</el-divider>
+          <el-row :gutter="16">
+            <el-col :span="8">
+              <div class="stat-item-inline">
+                <el-tag type="warning" size="small" effect="plain">Spelling</el-tag>
+                <span class="stat-inline-number">{{ stats.spelling_issues || 0 }}</span>
+              </div>
+            </el-col>
+            <el-col :span="8">
+              <div class="stat-item-inline">
+                <el-tag type="danger" size="small" effect="plain">Synonym</el-tag>
+                <span class="stat-inline-number">{{ stats.synonym_issues || 0 }}</span>
+              </div>
+            </el-col>
+            <el-col :span="8">
+              <div class="stat-item-inline">
+                <el-tag type="" size="small" effect="plain">Spelling + Synonym</el-tag>
+                <span class="stat-inline-number">{{ stats.spelling_synonym_issues || 0 }}</span>
+              </div>
+            </el-col>
+          </el-row>
+        </el-card>
 
-        <!-- Confidence -->
-        <el-table-column label="Conf." width="65" align="center">
-          <template slot-scope="{ row }">
-            <span class="confidence-text">{{ Math.round((row.match_confidence || 0) * 100) }}%</span>
-          </template>
-        </el-table-column>
+        <!-- Filter & Actions Bar -->
+        <el-card class="filter-card">
+          <el-row :gutter="16" type="flex" align="middle">
+            <el-col :span="12">
+              <el-radio-group v-model="filterStatus" size="small" @change="handleFilterChange">
+                <el-radio-button label="">All</el-radio-button>
+                <el-radio-button label="pending">Pending</el-radio-button>
+                <el-radio-button label="accepted">Accepted</el-radio-button>
+                <el-radio-button label="rejected">Rejected</el-radio-button>
+                <el-radio-button label="corrected">Corrected</el-radio-button>
+              </el-radio-group>
+            </el-col>
+            <el-col :span="3">
+              <el-select
+                v-model="filterIssue"
+                placeholder="Issue type"
+                size="small"
+                clearable
+                @change="handleFilterChange"
+              >
+                <el-option label="Spelling" value="spelling" />
+                <el-option label="Synonym" value="synonym" />
+                <el-option label="Spelling+Synonym" value="spelling+synonym" />
+              </el-select>
+            </el-col>
+            <el-col :span="5">
+              <el-input
+                v-model="searchText"
+                placeholder="Search taxon name..."
+                prefix-icon="el-icon-search"
+                size="small"
+                clearable
+                @clear="handleSearch"
+                @keyup.enter.native="handleSearch"
+              />
+            </el-col>
+            <el-col :span="4" style="text-align: right;">
+              <el-dropdown
+                trigger="click"
+                :disabled="selectedRows.length === 0"
+                @command="handleBatchAction"
+              >
+                <el-button size="small" :disabled="selectedRows.length === 0">
+                  Batch ({{ selectedRows.length }})
+                  <i class="el-icon-arrow-down el-icon--right" />
+                </el-button>
+                <el-dropdown-menu slot="dropdown">
+                  <el-dropdown-item command="batch-accept">
+                    <i class="el-icon-check" /> Accept Selected
+                  </el-dropdown-item>
+                  <el-dropdown-item command="batch-reject">
+                    <i class="el-icon-close" /> Reject Selected
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </el-dropdown>
+            </el-col>
+          </el-row>
+        </el-card>
 
-        <!-- WoRMS -->
-        <el-table-column label="WoRMS" width="60" align="center">
-          <template slot-scope="{ row }">
-            <el-tooltip content="Search on WoRMS" placement="top">
-              <el-button
-                type="text"
-                size="mini"
-                @click="openWorms(row.worms_url)">
-                <i class="el-icon-link" style="font-size: 16px;"></i>
-              </el-button>
-            </el-tooltip>
-          </template>
-        </el-table-column>
+        <!-- Review Table -->
+        <el-card class="table-card">
+          <el-table
+            ref="reviewTable"
+            v-loading="loading"
+            :data="reviewList"
+            border
+            fit
+            highlight-current-row
+            :row-class-name="tableRowClassName"
+            style="width: 100%"
+            @selection-change="handleSelectionChange"
+          >
 
-        <!-- Status -->
-        <el-table-column label="Status" width="90" align="center">
-          <template slot-scope="{ row }">
-            <el-tag size="small" :type="getStatusTagType(row.review_status)" effect="dark">
-              {{ row.review_status }}
-            </el-tag>
-          </template>
-        </el-table-column>
+            <el-table-column type="selection" width="40" :selectable="isSelectable" />
 
-        <!-- Actions -->
-        <el-table-column label="Actions" width="200" align="center" fixed="right">
-          <template slot-scope="{ row }">
-            <el-tooltip content="Accept" placement="top">
-              <el-button type="success" size="mini" icon="el-icon-check" circle @click="handleAccept(row)"></el-button>
-            </el-tooltip>
-            <el-tooltip content="Reject" placement="top">
-              <el-button type="danger" size="mini" icon="el-icon-close" circle @click="handleReject(row)"></el-button>
-            </el-tooltip>
-            <el-tooltip content="Correct: provide the right name" placement="top">
-              <el-button type="warning" size="mini" icon="el-icon-edit" circle @click="handleCorrect(row)"></el-button>
-            </el-tooltip>
-            <el-tooltip content="Skip" placement="top">
-              <el-button type="info" size="mini" icon="el-icon-minus" circle plain @click="handleSkip(row)"></el-button>
-            </el-tooltip>
-            <el-tooltip v-if="row.review_status !== 'pending'" content="Reset to pending" placement="top">
-              <el-button size="mini" icon="el-icon-refresh-left" circle @click="handleReset(row)"></el-button>
-            </el-tooltip>
-            <el-button type="text" size="mini" icon="el-icon-view" @click="showDetail(row)"></el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+            <el-table-column prop="taxon_id" label="ID" width="70" sortable />
 
-      <pagination
-        v-show="total > 0"
-        :total="total"
-        :page.sync="listQuery.page"
-        :limit.sync="listQuery.page_size"
-        @pagination="fetchReviewList">
-      </pagination>
-    </el-card>
+            <!-- Issue Type -->
+            <el-table-column label="Issue" width="110" align="center">
+              <template slot-scope="{ row }">
+                <el-tag size="mini" :type="getIssueTagType(row.issue_type)">
+                  {{ getIssueLabel(row.issue_type) }}
+                </el-tag>
+              </template>
+            </el-table-column>
 
-    <!-- Detail Dialog -->
-    <el-dialog :visible.sync="detailDialogVisible" title="Review Detail" width="750px">
-      <div v-if="detailData" class="detail-content">
-        <el-descriptions :column="2" border size="medium">
-          <el-descriptions-item label="TaxonID">{{ detailData.taxon_id }}</el-descriptions-item>
-          <el-descriptions-item label="Issue Type">
-            <el-tag size="small" :type="getIssueTagType(detailData.issue_type)">
-              {{ getIssueLabel(detailData.issue_type) }}
-            </el-tag>
-          </el-descriptions-item>
-
-          <el-descriptions-item label="Original Name" :span="2">
-            <span class="scientific-name original">{{ detailData.current_full_name }}</span>
-            <span v-if="detailData.current_family" class="family-tag" style="margin-left:8px;">{{ detailData.current_family }}</span>
-          </el-descriptions-item>
-
-          <template v-if="detailData.corrected_full_name">
-            <el-descriptions-item label="Corrected Name" :span="2">
-              <span class="scientific-name corrected">{{ detailData.corrected_full_name }}</span>
-              <span class="confidence-tag" style="margin-left:8px;">
-                {{ detailData.correction_type }} ({{ Math.round((detailData.correction_confidence || 0) * 100) }}%)
-              </span>
-            </el-descriptions-item>
-          </template>
-
-          <el-descriptions-item label="Suggested Valid Name" :span="2">
-            <span class="scientific-name suggested">{{ detailData.suggested_full_name }}</span>
-          </el-descriptions-item>
-
-          <template v-if="detailData.final_valid_name">
-            <el-descriptions-item label="Final Valid Name" :span="2">
-              <span class="scientific-name final">{{ detailData.final_valid_name }}</span>
-            </el-descriptions-item>
-          </template>
-
-          <el-descriptions-item label="Detection">{{ detailData.detection_method }}</el-descriptions-item>
-          <el-descriptions-item label="Confidence">{{ Math.round((detailData.match_confidence || 0) * 100) }}%</el-descriptions-item>
-
-          <el-descriptions-item label="Usage Count" :span="2">
-            {{ detailData.usage_count || 0 }} records reference this TaxonID
-          </el-descriptions-item>
-
-          <!-- WoRMS links -->
-          <el-descriptions-item label="WoRMS (Original)" :span="2">
-            <el-link type="primary" :href="detailData.worms_current_url" target="_blank" :underline="true">
-              <i class="el-icon-link"></i> {{ detailData.current_full_name }}
-            </el-link>
-          </el-descriptions-item>
-          <template v-if="detailData.worms_corrected_url">
-            <el-descriptions-item label="WoRMS (Corrected)" :span="2">
-              <el-link type="primary" :href="detailData.worms_corrected_url" target="_blank" :underline="true">
-                <i class="el-icon-link"></i> {{ detailData.corrected_full_name }}
-              </el-link>
-            </el-descriptions-item>
-          </template>
-          <template v-if="detailData.worms_suggested_url && detailData.suggested_full_name !== detailData.corrected_full_name">
-            <el-descriptions-item label="WoRMS (Valid)" :span="2">
-              <el-link type="primary" :href="detailData.worms_suggested_url" target="_blank" :underline="true">
-                <i class="el-icon-link"></i> {{ detailData.suggested_full_name }}
-              </el-link>
-            </el-descriptions-item>
-          </template>
-
-          <el-descriptions-item label="Status">
-            <el-tag :type="getStatusTagType(detailData.review_status)" size="small" effect="dark">
-              {{ detailData.review_status }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="Reviewed By">{{ detailData.reviewed_by || '-' }}</el-descriptions-item>
-          <el-descriptions-item v-if="detailData.reviewed_at" label="Reviewed At" :span="2">
-            {{ formatDate(detailData.reviewed_at) }}
-          </el-descriptions-item>
-          <el-descriptions-item v-if="detailData.review_notes" label="Notes" :span="2">
-            {{ detailData.review_notes }}
-          </el-descriptions-item>
-        </el-descriptions>
-
-        <!-- Quick actions from detail dialog -->
-        <div class="detail-actions">
-          <el-divider></el-divider>
-          <el-button type="success" icon="el-icon-check" @click="handleAcceptFromDetail">Accept</el-button>
-          <el-button type="danger" icon="el-icon-close" @click="handleRejectFromDetail">Reject</el-button>
-          <el-button type="warning" icon="el-icon-edit" @click="handleCorrectFromDetail">Correct</el-button>
-          <el-button type="info" icon="el-icon-minus" plain @click="handleSkipFromDetail">Skip</el-button>
-          <el-button v-if="detailData.review_status !== 'pending'" icon="el-icon-refresh-left" @click="handleResetFromDetail">Reset</el-button>
-        </div>
-      </div>
-      <span slot="footer">
-        <el-button @click="detailDialogVisible = false">Close</el-button>
-      </span>
-    </el-dialog>
-
-    <!-- Reject Action Dialog (notes only, no reviewer) -->
-    <el-dialog :visible.sync="rejectDialogVisible" title="Reject Suggestion" width="500px">
-      <el-alert
-        title="Reject means the suggested name is incorrect. The original name will remain unchanged."
-        type="error"
-        :closable="false"
-        show-icon
-        style="margin-bottom: 16px;">
-      </el-alert>
-
-      <el-form label-width="100px">
-        <el-form-item label="Notes">
-          <el-input v-model="rejectForm.notes" type="textarea" :rows="3" placeholder="Why is this suggestion wrong?"></el-input>
-        </el-form-item>
-      </el-form>
-      <span slot="footer">
-        <el-button @click="rejectDialogVisible = false">Cancel</el-button>
-        <el-button type="danger" :loading="actionLoading" @click="confirmReject">
-          <i class="el-icon-close"></i> Confirm Reject
-        </el-button>
-      </span>
-    </el-dialog>
-
-    <!-- Correct Action Dialog -->
-    <el-dialog :visible.sync="correctDialogVisible" title="Correct Name" width="650px">
-      <el-alert
-        title="Provide the correct valid name. Search the reference database or enter manually."
-        type="warning"
-        :closable="false"
-        show-icon
-        style="margin-bottom: 16px;">
-      </el-alert>
-
-      <div v-if="correctContext" class="accept-summary" style="margin-bottom: 16px;">
-        <div class="pipeline-row">
-          <span class="pipeline-label">Original:</span>
-          <span class="scientific-name original">{{ correctContext.current_full_name }}</span>
-        </div>
-        <div class="pipeline-row">
-          <span class="pipeline-label">Suggested:</span>
-          <span class="scientific-name suggested">{{ correctContext.suggested_full_name }}</span>
-        </div>
-      </div>
-
-      <el-form label-width="140px">
-        <el-form-item label="Input Mode">
-          <el-radio-group v-model="correctForm.mode" size="small">
-            <el-radio-button label="search">Search Reference DB</el-radio-button>
-            <el-radio-button label="manual">Manual Input</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-
-        <!-- Search mode -->
-        <template v-if="correctForm.mode === 'search'">
-          <el-form-item label="Search Taxon" required>
-            <el-autocomplete
-              v-model="correctForm.searchText"
-              :fetch-suggestions="searchReferenceTaxaDebounced"
-              placeholder="Type at least 2 characters..."
-              :trigger-on-focus="false"
-              style="width: 100%"
-              @select="handleReferenceSelect">
-              <template slot-scope="{ item }">
-                <div style="line-height: 1.4;">
-                  <span style="font-style: italic; font-weight: 500;">{{ item.scientific_name }}</span>
-                  <span v-if="item.rank" style="margin-left: 8px; color: #909399; font-size: 12px;">
-                    [{{ item.rank }}<template v-if="item.status"> - {{ item.status }}</template>]
-                  </span>
-                  <div v-if="item.valid_name && item.valid_name !== item.scientific_name" style="font-size: 12px; color: #67C23A;">
-                    Valid: {{ item.valid_name }}
+            <!-- Name Comparison: genus / species / family with diff highlighting -->
+            <el-table-column label="Name Comparison" min-width="420">
+              <template slot-scope="{ row }">
+                <div class="name-compare">
+                  <div class="compare-header">
+                    <span class="compare-cell label-cell" />
+                    <span class="compare-cell">Genus</span>
+                    <span class="compare-cell">Species</span>
+                    <span class="compare-cell family-col">Family</span>
+                  </div>
+                  <!-- Original -->
+                  <div class="compare-row">
+                    <span class="compare-cell label-cell">Original</span>
+                    <span class="compare-cell sci-name">{{ row.current_genus }}</span>
+                    <span class="compare-cell sci-name">{{ row.current_species }}</span>
+                    <span class="compare-cell family-col family-text">{{ row.current_family || '-' }}</span>
+                  </div>
+                  <!-- Corrected (only for spelling issues) -->
+                  <div v-if="row.corrected_full_name" class="compare-row">
+                    <span class="compare-cell label-cell">Corrected</span>
+                    <span class="compare-cell sci-name" :class="{ 'field-changed': row.corrected_genus !== row.current_genus }">
+                      {{ row.corrected_genus }}
+                    </span>
+                    <span class="compare-cell sci-name" :class="{ 'field-changed': row.corrected_species !== row.current_species }">
+                      {{ row.corrected_species }}
+                    </span>
+                    <span class="compare-cell family-col family-text">
+                      <span class="conf-badge">{{ row.correction_type }} {{ Math.round((row.correction_confidence || 0) * 100) }}%</span>
+                    </span>
+                  </div>
+                  <!-- Suggested Valid -->
+                  <div class="compare-row">
+                    <span class="compare-cell label-cell">Valid</span>
+                    <span
+                      class="compare-cell sci-name"
+                      :class="{ 'field-changed': row.suggested_genus !== (row.corrected_genus || row.current_genus) }"
+                    >
+                      {{ row.suggested_genus }}
+                    </span>
+                    <span
+                      class="compare-cell sci-name"
+                      :class="{ 'field-changed': row.suggested_species !== (row.corrected_species || row.current_species) }"
+                    >
+                      {{ row.suggested_species }}
+                    </span>
+                    <span class="compare-cell family-col family-text">-</span>
+                  </div>
+                  <!-- Final (if specialist overrode) -->
+                  <div v-if="row.final_valid_name && row.final_valid_name !== row.suggested_full_name" class="compare-row final-row">
+                    <span class="compare-cell label-cell">Final</span>
+                    <span class="compare-cell sci-name final-name" style="flex: 3;">{{ row.final_valid_name }}</span>
                   </div>
                 </div>
               </template>
-            </el-autocomplete>
-          </el-form-item>
-          <el-form-item v-if="correctForm.selectedRef" label="Selected">
-            <el-tag type="success">{{ correctForm.final_valid_name }}</el-tag>
-            <span style="margin-left: 8px; color: #909399; font-size: 12px;">
-              (Ref ID: {{ correctForm.taxonrank_ref_id }})
-            </span>
-          </el-form-item>
-        </template>
+            </el-table-column>
 
-        <!-- Manual mode -->
-        <template v-if="correctForm.mode === 'manual'">
-          <el-form-item label="Genus" required>
-            <el-input v-model="correctForm.final_genus" placeholder="e.g. Amphiprion"></el-input>
-          </el-form-item>
-          <el-form-item label="Species">
-            <el-input v-model="correctForm.final_species" placeholder="e.g. ocellaris"></el-input>
-          </el-form-item>
-          <el-form-item label="Full Name" required>
-            <el-input v-model="correctForm.final_valid_name" placeholder="e.g. Amphiprion ocellaris"></el-input>
-          </el-form-item>
-          <el-form-item label="Create in Local DB">
-            <el-switch v-model="correctForm.create_in_local"></el-switch>
-            <span style="margin-left: 8px; font-size: 12px; color: #909399;">
-              Add this name to the local TaxonomicTable
-            </span>
-          </el-form-item>
-        </template>
+            <!-- Confidence -->
+            <el-table-column label="Conf." width="65" align="center">
+              <template slot-scope="{ row }">
+                <span class="confidence-text">{{ Math.round((row.match_confidence || 0) * 100) }}%</span>
+              </template>
+            </el-table-column>
 
-        <el-form-item label="Notes">
-          <el-input v-model="correctForm.notes" type="textarea" :rows="2" placeholder="Optional notes..."></el-input>
-        </el-form-item>
-      </el-form>
-      <span slot="footer">
-        <el-button @click="correctDialogVisible = false">Cancel</el-button>
-        <el-button type="warning" :loading="actionLoading" @click="confirmCorrect">
-          <i class="el-icon-edit"></i> Confirm Correction
-        </el-button>
-      </span>
-    </el-dialog>
+            <!-- WoRMS -->
+            <el-table-column label="WoRMS" width="60" align="center">
+              <template slot-scope="{ row }">
+                <el-tooltip content="Search on WoRMS" placement="top">
+                  <el-button
+                    type="text"
+                    size="mini"
+                    @click="openWorms(row.worms_url)"
+                  >
+                    <i class="el-icon-link" style="font-size: 16px;" />
+                  </el-button>
+                </el-tooltip>
+              </template>
+            </el-table-column>
 
-    <!-- Scan Confirmation Dialog -->
-    <el-dialog :visible.sync="scanDialogVisible" title="Scan All Taxon Names" width="550px">
-      <el-alert
-        title="This will re-scan ALL taxon names against the TaxonRank reference database."
-        type="warning"
-        :closable="false"
-        show-icon
-        style="margin-bottom: 16px;">
-      </el-alert>
+            <!-- Status -->
+            <el-table-column label="Status" width="90" align="center">
+              <template slot-scope="{ row }">
+                <el-tag size="small" :type="getStatusTagType(row.review_status)" effect="dark">
+                  {{ row.review_status }}
+                </el-tag>
+              </template>
+            </el-table-column>
 
-      <div class="scan-warning-stats">
-        <div class="scan-stat-row">
-          <span class="scan-stat-label">Current pending reviews:</span>
-          <span class="scan-stat-value pending">{{ stats.pending || 0 }}</span>
-          <span class="scan-stat-hint">(will be deleted and re-created)</span>
-        </div>
-        <div class="scan-stat-row">
-          <span class="scan-stat-label">Accepted:</span>
-          <span class="scan-stat-value accepted">{{ stats.accepted || 0 }}</span>
-          <span class="scan-stat-hint">(will NOT be affected)</span>
-        </div>
-        <div class="scan-stat-row">
-          <span class="scan-stat-label">Rejected:</span>
-          <span class="scan-stat-value rejected">{{ stats.rejected || 0 }}</span>
-          <span class="scan-stat-hint">(will NOT be affected)</span>
-        </div>
-        <div class="scan-stat-row">
-          <span class="scan-stat-label">Corrected:</span>
-          <span class="scan-stat-value corrected">{{ stats.corrected || 0 }}</span>
-          <span class="scan-stat-hint">(will NOT be affected)</span>
-        </div>
-      </div>
+            <!-- Actions -->
+            <el-table-column label="Actions" width="200" align="center" fixed="right">
+              <template slot-scope="{ row }">
+                <el-tooltip content="Accept" placement="top">
+                  <el-button type="success" size="mini" icon="el-icon-check" circle @click="handleAccept(row)" />
+                </el-tooltip>
+                <el-tooltip content="Reject" placement="top">
+                  <el-button type="danger" size="mini" icon="el-icon-close" circle @click="handleReject(row)" />
+                </el-tooltip>
+                <el-tooltip content="Correct: provide the right name" placement="top">
+                  <el-button type="warning" size="mini" icon="el-icon-edit" circle @click="handleCorrect(row)" />
+                </el-tooltip>
+                <el-tooltip content="Skip" placement="top">
+                  <el-button type="info" size="mini" icon="el-icon-minus" circle plain @click="handleSkip(row)" />
+                </el-tooltip>
+                <el-tooltip v-if="row.review_status !== 'pending'" content="Reset to pending" placement="top">
+                  <el-button size="mini" icon="el-icon-refresh-left" circle @click="handleReset(row)" />
+                </el-tooltip>
+                <el-button type="text" size="mini" icon="el-icon-view" @click="showDetail(row)" />
+              </template>
+            </el-table-column>
+          </el-table>
 
-      <el-divider></el-divider>
-      <div style="text-align: center;">
-        <el-checkbox v-model="scanConfirmChecked" style="font-size: 14px;">
-          I understand that <strong>{{ stats.pending || 0 }} pending reviews</strong> will be reset
-        </el-checkbox>
-      </div>
+          <pagination
+            v-show="total > 0"
+            :total="total"
+            :page.sync="listQuery.page"
+            :limit.sync="listQuery.page_size"
+            @pagination="fetchReviewList"
+          />
+        </el-card>
 
-      <span slot="footer">
-        <el-button @click="scanDialogVisible = false">Cancel</el-button>
-        <el-button type="primary" :loading="scanning" :disabled="!scanConfirmChecked" @click="confirmScan">
-          <i class="el-icon-search"></i> Start Scan
-        </el-button>
-      </span>
-    </el-dialog>
+        <!-- Detail Dialog -->
+        <el-dialog :visible.sync="detailDialogVisible" title="Review Detail" width="750px">
+          <div v-if="detailData" class="detail-content">
+            <el-descriptions :column="2" border size="medium">
+              <el-descriptions-item label="TaxonID">{{ detailData.taxon_id }}</el-descriptions-item>
+              <el-descriptions-item label="Issue Type">
+                <el-tag size="small" :type="getIssueTagType(detailData.issue_type)">
+                  {{ getIssueLabel(detailData.issue_type) }}
+                </el-tag>
+              </el-descriptions-item>
 
-    <!-- Batch Action Dialog (notes only, no reviewer) -->
-    <el-dialog :visible.sync="batchDialogVisible" :title="batchDialogTitle" width="500px">
-      <el-alert
-        :title="batchAlertMessage"
-        :type="batchActionType === 'accept' ? 'success' : 'error'"
-        :closable="false"
-        show-icon
-        style="margin-bottom: 16px;">
-      </el-alert>
+              <el-descriptions-item label="Original Name" :span="2">
+                <span class="scientific-name original">{{ detailData.current_full_name }}</span>
+                <span v-if="detailData.current_family" class="family-tag" style="margin-left:8px;">{{ detailData.current_family }}</span>
+              </el-descriptions-item>
 
-      <el-form label-width="100px">
-        <el-form-item label="Notes">
-          <el-input v-model="batchForm.notes" type="textarea" :rows="2" placeholder="Optional notes..."></el-input>
-        </el-form-item>
-      </el-form>
-      <span slot="footer">
-        <el-button @click="batchDialogVisible = false">Cancel</el-button>
-        <el-button
-          :type="batchActionType === 'accept' ? 'success' : 'danger'"
-          :loading="actionLoading"
-          @click="confirmBatchAction">
-          Confirm {{ batchActionType }} ({{ selectedRows.length }})
-        </el-button>
-      </span>
-    </el-dialog>
+              <template v-if="detailData.corrected_full_name">
+                <el-descriptions-item label="Corrected Name" :span="2">
+                  <span class="scientific-name corrected">{{ detailData.corrected_full_name }}</span>
+                  <span class="confidence-tag" style="margin-left:8px;">
+                    {{ detailData.correction_type }} ({{ Math.round((detailData.correction_confidence || 0) * 100) }}%)
+                  </span>
+                </el-descriptions-item>
+              </template>
+
+              <el-descriptions-item label="Suggested Valid Name" :span="2">
+                <span class="scientific-name suggested">{{ detailData.suggested_full_name }}</span>
+              </el-descriptions-item>
+
+              <template v-if="detailData.final_valid_name">
+                <el-descriptions-item label="Final Valid Name" :span="2">
+                  <span class="scientific-name final">{{ detailData.final_valid_name }}</span>
+                </el-descriptions-item>
+              </template>
+
+              <el-descriptions-item label="Detection">{{ detailData.detection_method }}</el-descriptions-item>
+              <el-descriptions-item label="Confidence">{{ Math.round((detailData.match_confidence || 0) * 100) }}%</el-descriptions-item>
+
+              <el-descriptions-item label="Usage Count" :span="2">
+                {{ detailData.usage_count || 0 }} records reference this TaxonID
+              </el-descriptions-item>
+
+              <!-- WoRMS links -->
+              <el-descriptions-item label="WoRMS (Original)" :span="2">
+                <el-link type="primary" :href="detailData.worms_current_url" target="_blank" :underline="true">
+                  <i class="el-icon-link" /> {{ detailData.current_full_name }}
+                </el-link>
+              </el-descriptions-item>
+              <template v-if="detailData.worms_corrected_url">
+                <el-descriptions-item label="WoRMS (Corrected)" :span="2">
+                  <el-link type="primary" :href="detailData.worms_corrected_url" target="_blank" :underline="true">
+                    <i class="el-icon-link" /> {{ detailData.corrected_full_name }}
+                  </el-link>
+                </el-descriptions-item>
+              </template>
+              <template v-if="detailData.worms_suggested_url && detailData.suggested_full_name !== detailData.corrected_full_name">
+                <el-descriptions-item label="WoRMS (Valid)" :span="2">
+                  <el-link type="primary" :href="detailData.worms_suggested_url" target="_blank" :underline="true">
+                    <i class="el-icon-link" /> {{ detailData.suggested_full_name }}
+                  </el-link>
+                </el-descriptions-item>
+              </template>
+
+              <el-descriptions-item label="Status">
+                <el-tag :type="getStatusTagType(detailData.review_status)" size="small" effect="dark">
+                  {{ detailData.review_status }}
+                </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="Reviewed By">{{ detailData.reviewed_by || '-' }}</el-descriptions-item>
+              <el-descriptions-item v-if="detailData.reviewed_at" label="Reviewed At" :span="2">
+                {{ formatDate(detailData.reviewed_at) }}
+              </el-descriptions-item>
+              <el-descriptions-item v-if="detailData.review_notes" label="Notes" :span="2">
+                {{ detailData.review_notes }}
+              </el-descriptions-item>
+            </el-descriptions>
+
+            <!-- Quick actions from detail dialog -->
+            <div class="detail-actions">
+              <el-divider />
+              <el-button type="success" icon="el-icon-check" @click="handleAcceptFromDetail">Accept</el-button>
+              <el-button type="danger" icon="el-icon-close" @click="handleRejectFromDetail">Reject</el-button>
+              <el-button type="warning" icon="el-icon-edit" @click="handleCorrectFromDetail">Correct</el-button>
+              <el-button type="info" icon="el-icon-minus" plain @click="handleSkipFromDetail">Skip</el-button>
+              <el-button v-if="detailData.review_status !== 'pending'" icon="el-icon-refresh-left" @click="handleResetFromDetail">Reset</el-button>
+            </div>
+          </div>
+          <span slot="footer">
+            <el-button @click="detailDialogVisible = false">Close</el-button>
+          </span>
+        </el-dialog>
+
+        <!-- Reject Action Dialog (notes only, no reviewer) -->
+        <el-dialog :visible.sync="rejectDialogVisible" title="Reject Suggestion" width="500px">
+          <el-alert
+            title="Reject means the suggested name is incorrect. The original name will remain unchanged."
+            type="error"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 16px;"
+          />
+
+          <el-form label-width="100px">
+            <el-form-item label="Notes">
+              <el-input v-model="rejectForm.notes" type="textarea" :rows="3" placeholder="Why is this suggestion wrong?" />
+            </el-form-item>
+          </el-form>
+          <span slot="footer">
+            <el-button @click="rejectDialogVisible = false">Cancel</el-button>
+            <el-button type="danger" :loading="actionLoading" @click="confirmReject">
+              <i class="el-icon-close" /> Confirm Reject
+            </el-button>
+          </span>
+        </el-dialog>
+
+        <!-- Correct Action Dialog -->
+        <el-dialog :visible.sync="correctDialogVisible" title="Correct Name" width="650px">
+          <el-alert
+            title="Provide the correct valid name. Search the reference database or enter manually."
+            type="warning"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 16px;"
+          />
+
+          <div v-if="correctContext" class="accept-summary" style="margin-bottom: 16px;">
+            <div class="pipeline-row">
+              <span class="pipeline-label">Original:</span>
+              <span class="scientific-name original">{{ correctContext.current_full_name }}</span>
+            </div>
+            <div class="pipeline-row">
+              <span class="pipeline-label">Suggested:</span>
+              <span class="scientific-name suggested">{{ correctContext.suggested_full_name }}</span>
+            </div>
+          </div>
+
+          <el-form label-width="140px">
+            <el-form-item label="Input Mode">
+              <el-radio-group v-model="correctForm.mode" size="small">
+                <el-radio-button label="search">Search Reference DB</el-radio-button>
+                <el-radio-button label="manual">Manual Input</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+
+            <!-- Search mode -->
+            <template v-if="correctForm.mode === 'search'">
+              <el-form-item label="Search Taxon" required>
+                <el-autocomplete
+                  v-model="correctForm.searchText"
+                  :fetch-suggestions="searchReferenceTaxaDebounced"
+                  placeholder="Type at least 2 characters..."
+                  :trigger-on-focus="false"
+                  style="width: 100%"
+                  @select="handleReferenceSelect"
+                >
+                  <template slot-scope="{ item }">
+                    <div style="line-height: 1.4;">
+                      <span style="font-style: italic; font-weight: 500;">{{ item.scientific_name }}</span>
+                      <span v-if="item.rank" style="margin-left: 8px; color: #909399; font-size: 12px;">
+                        [{{ item.rank }}<template v-if="item.status"> - {{ item.status }}</template>]
+                      </span>
+                      <div v-if="item.valid_name && item.valid_name !== item.scientific_name" style="font-size: 12px; color: #67C23A;">
+                        Valid: {{ item.valid_name }}
+                      </div>
+                    </div>
+                  </template>
+                </el-autocomplete>
+              </el-form-item>
+              <el-form-item v-if="correctForm.selectedRef" label="Selected">
+                <el-tag type="success">{{ correctForm.final_valid_name }}</el-tag>
+                <span style="margin-left: 8px; color: #909399; font-size: 12px;">
+                  (Ref ID: {{ correctForm.taxonrank_ref_id }})
+                </span>
+              </el-form-item>
+            </template>
+
+            <!-- Manual mode -->
+            <template v-if="correctForm.mode === 'manual'">
+              <el-form-item label="Genus" required>
+                <el-input v-model="correctForm.final_genus" placeholder="e.g. Amphiprion" />
+              </el-form-item>
+              <el-form-item label="Species">
+                <el-input v-model="correctForm.final_species" placeholder="e.g. ocellaris" />
+              </el-form-item>
+              <el-form-item label="Full Name" required>
+                <el-input v-model="correctForm.final_valid_name" placeholder="e.g. Amphiprion ocellaris" />
+              </el-form-item>
+              <el-form-item label="Create in Local DB">
+                <el-switch v-model="correctForm.create_in_local" />
+                <span style="margin-left: 8px; font-size: 12px; color: #909399;">
+                  Add this name to the local TaxonomicTable
+                </span>
+              </el-form-item>
+            </template>
+
+            <el-form-item label="Notes">
+              <el-input v-model="correctForm.notes" type="textarea" :rows="2" placeholder="Optional notes..." />
+            </el-form-item>
+          </el-form>
+          <span slot="footer">
+            <el-button @click="correctDialogVisible = false">Cancel</el-button>
+            <el-button type="warning" :loading="actionLoading" @click="confirmCorrect">
+              <i class="el-icon-edit" /> Confirm Correction
+            </el-button>
+          </span>
+        </el-dialog>
+
+        <!-- Scan Confirmation Dialog -->
+        <el-dialog :visible.sync="scanDialogVisible" title="Scan All Taxon Names" width="550px">
+          <el-alert
+            title="This will re-scan ALL taxon names against the TaxonRank reference database."
+            type="warning"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 16px;"
+          />
+
+          <div class="scan-warning-stats">
+            <div class="scan-stat-row">
+              <span class="scan-stat-label">Current pending reviews:</span>
+              <span class="scan-stat-value pending">{{ stats.pending || 0 }}</span>
+              <span class="scan-stat-hint">(will be deleted and re-created)</span>
+            </div>
+            <div class="scan-stat-row">
+              <span class="scan-stat-label">Accepted:</span>
+              <span class="scan-stat-value accepted">{{ stats.accepted || 0 }}</span>
+              <span class="scan-stat-hint">(will NOT be affected)</span>
+            </div>
+            <div class="scan-stat-row">
+              <span class="scan-stat-label">Rejected:</span>
+              <span class="scan-stat-value rejected">{{ stats.rejected || 0 }}</span>
+              <span class="scan-stat-hint">(will NOT be affected)</span>
+            </div>
+            <div class="scan-stat-row">
+              <span class="scan-stat-label">Corrected:</span>
+              <span class="scan-stat-value corrected">{{ stats.corrected || 0 }}</span>
+              <span class="scan-stat-hint">(will NOT be affected)</span>
+            </div>
+          </div>
+
+          <el-divider />
+          <div style="text-align: center;">
+            <el-checkbox v-model="scanConfirmChecked" style="font-size: 14px;">
+              I understand that <strong>{{ stats.pending || 0 }} pending reviews</strong> will be reset
+            </el-checkbox>
+          </div>
+
+          <span slot="footer">
+            <el-button @click="scanDialogVisible = false">Cancel</el-button>
+            <el-button type="primary" :loading="scanning" :disabled="!scanConfirmChecked" @click="confirmScan">
+              <i class="el-icon-search" /> Start Scan
+            </el-button>
+          </span>
+        </el-dialog>
+
+        <!-- Batch Action Dialog (notes only, no reviewer) -->
+        <el-dialog :visible.sync="batchDialogVisible" :title="batchDialogTitle" width="500px">
+          <el-alert
+            :title="batchAlertMessage"
+            :type="batchActionType === 'accept' ? 'success' : 'error'"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 16px;"
+          />
+
+          <el-form label-width="100px">
+            <el-form-item label="Notes">
+              <el-input v-model="batchForm.notes" type="textarea" :rows="2" placeholder="Optional notes..." />
+            </el-form-item>
+          </el-form>
+          <span slot="footer">
+            <el-button @click="batchDialogVisible = false">Cancel</el-button>
+            <el-button
+              :type="batchActionType === 'accept' ? 'success' : 'danger'"
+              :loading="actionLoading"
+              @click="confirmBatchAction"
+            >
+              Confirm {{ batchActionType }} ({{ selectedRows.length }})
+            </el-button>
+          </span>
+        </el-dialog>
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
 <script>
 import Pagination from '@/components/Pagination'
+import RecheckPanel from './RecheckPanel'
+import DataQualityPanel from './DataQualityPanel'
+import GenusRepairPanel from './GenusRepairPanel'
 import {
   triggerSynonymScan,
   getReviewList,
@@ -615,9 +672,18 @@ import {
 
 export default {
   name: 'SynonymReview',
-  components: { Pagination },
+  components: { Pagination, RecheckPanel, DataQualityPanel, GenusRepairPanel },
   data() {
     return {
+      activeTab: 'quality',
+      // The legacy name/synonym review tab. See the comment on its el-tab-pane.
+      showLegacyTab: false,
+      // set when the recheck tab hands a family disagreement over to be settled
+      focusPair: null,
+      // A decision in the first two tabs changes the taxon table, so the recheck's stored
+      // result is stale until it is scanned again. Survives a reload: the staleness is a
+      // fact about the data, not about this page instance.
+      rescanNeeded: localStorage.getItem('taxonRescanNeeded') === '1',
       configStatus: { configured: false, accessible: false },
       configChecked: false,
       stats: {},
@@ -677,12 +743,28 @@ export default {
       return `Reject ${this.selectedRows.length} selected items. These suggestions will be marked as incorrect.`
     }
   },
+  watch: {
+    // persisted so the reminder is not lost by a refresh between deciding and rescanning
+    rescanNeeded(v) {
+      if (v) localStorage.setItem('taxonRescanNeeded', '1')
+      else localStorage.removeItem('taxonRescanNeeded')
+    }
+  },
   created() {
     this.checkConfig()
     this.loadStats()
     this.fetchReviewList()
   },
   methods: {
+    // Recheck flags a family disagreement per taxon, but it is one decision for the whole
+    // collection — switch to the tab that records it and point at the right row.
+    openFamilyDecision(pair) {
+      this.focusPair = pair
+      this.activeTab = 'quality'
+    },
+    markRescanNeeded() {
+      this.rescanNeeded = true
+    },
     async checkConfig() {
       try {
         const res = await getConfigStatus()
