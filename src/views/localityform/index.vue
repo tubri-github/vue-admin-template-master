@@ -47,18 +47,25 @@
         <GoogleMap v-on:updatedPosition="updatedPosition"></GoogleMap>
       </el-form-item>
       <GeorefDialog :visible.sync="geoVisible" :locality="geoLocObj" @picked="onGeoPicked" />
+      <!-- value-format 必须给：不给的话 picker 发的是带 Z 的完整 ISO（本地零点转 UTC），
+           后端 timestamp 列收到会报错，且东半球时区会整整差一天 -->
       <el-form-item label="Date">
         <el-col :span="11">
-          <el-date-picker v-model="form.startDate" type="date" placeholder="Pick a date" style="width: 100%;" />
+          <el-date-picker v-model="form.startDate" type="date" value-format="yyyy-MM-dd" placeholder="Start date" style="width: 100%;" />
         </el-col>
         <el-col :span="2" class="line"> - </el-col>
         <el-col :span="11">
-          <el-time-picker v-model="form.endDate" type="date" placeholder="Pick a time" style="width: 100%;" />
+          <el-date-picker v-model="form.endDate" type="date" value-format="yyyy-MM-dd" placeholder="End date" style="width: 100%;" />
         </el-col>
       </el-form-item>
+      <!-- VerbatimDate 是标签上的原文（varchar），库里都是 '7 September 1950' / '0/0/1876' / '21/8/1958'
+           这种形式；日期控件既表达不了、又会逼人编一个精确日期，所以用纯文本 -->
       <el-form-item label="Verbatim Date">
         <el-col :span="11">
-          <el-date-picker v-model="form.verbatimDate" type="date" placeholder="Pick a date" style="width: 100%;" />
+          <el-input v-model="form.verbatimDate" placeholder="Exactly as written on the label, e.g. 7 September 1950" />
+        </el-col>
+        <el-col :span="13">
+          <span class="muted" style="margin-left:8px">Transcribe the date as written — do not normalise or guess.</span>
         </el-col>
       </el-form-item>
       <el-form-item label="Remark">
@@ -111,7 +118,28 @@
             </el-table-column>
           </el-table>
         </el-form-item>
-          <el-button type="primary" @click="onSubmit">{{ isEdit ? 'Save changes' : 'Create' }}</el-button>
+          <!-- FieldNo 允许为空（现场不一定给得到），所以是提醒不是拦截 -->
+          <el-alert
+            v-if="!hasFieldNo"
+            type="warning"
+            show-icon
+            :closable="false"
+            title="No Field No. given"
+            description="This locality will be saved without a field number. You can still find it by locality text, but lots cannot be matched to it by field number later. Add one now if you have it."
+            style="margin-bottom: 12px;"
+          />
+          <!-- 同样只提醒不拦截：库里已有 EndDate 早于 StartDate 的历史记录，
+               硬拦会导致那些记录连打开保存都做不到。同一天算正常。 -->
+          <el-alert
+            v-if="dateRangeReversed"
+            type="warning"
+            show-icon
+            :closable="false"
+            title="End date is before start date"
+            :description="'Collecting ends ' + form.endDate + ' but starts ' + form.startDate + '. It will be saved as entered — please check the dates.'"
+            style="margin-bottom: 12px;"
+          />
+          <el-button type="primary" :loading="submitting" @click="onSubmit">{{ isEdit ? 'Save changes' : 'Create' }}</el-button>
           <el-button @click="onCancel">Cancel</el-button>
     </el-form>
     <el-divider content-position="left"> Please first create a locality in order to proceed with adding lots. </el-divider>
@@ -211,6 +239,7 @@ export default {
     return {
       geoVisible: false,
       isEdit: false,
+      submitting: false,
       statesOptions:[{
       }],
       countryOptions:[{
@@ -328,6 +357,14 @@ export default {
         keyWord:this.keyWord
       }
     },
+    hasFieldNo(){
+      return !!(this.form.fieldNo && String(this.form.fieldNo).trim())
+    },
+    // 两个都是 value-format="yyyy-MM-dd" 的字符串，直接比大小即可；相等（同一天）算正常
+    dateRangeReversed(){
+      const s = this.form.startDate, e = this.form.endDate
+      return !!(s && e && String(e) < String(s))
+    },
     geoLocObj(){
       return {
         locality: this.form.localityString || this.form.drainage || '',
@@ -355,24 +392,61 @@ export default {
           fieldNo: d.FieldNo || '', localityString: d.LocalityString || '', drainage: d.Drainage || '',
           waterbody: d.WaterBody || '', country: d.Country || '', continent: d.Continent || '',
           state: d.State || '', county: d.County || '', latitude: d.Lat != null ? d.Lat : '',
-          longitude: d.Lon != null ? d.Lon : '', startDate: d.StartDate || '', endDate: d.EndDate || '',
+          longitude: d.Lon != null ? d.Lon : '',
+          // 后端回的是 ISO datetime，picker 现在按 yyyy-MM-dd 取值，截到日期部分才认
+          startDate: (d.StartDate || '').slice(0, 10), endDate: (d.EndDate || '').slice(0, 10),
           verbatimDate: d.VerbatimDate || '', remark: d.Remarks || '', inventory: d.Inventory || '',
           verbatimCollectors: d.VerbatimCollectors || ''
         })
+        // 已有的采集人（以前没加载，表格永远只有一行空的，改了还会被静默丢弃）
+        const collectors = response.data.collectors || []
+        this.form.zCollectorsLocality = collectors.map(c => ({
+          collectorName: c.collectorName || '', collectorID: c.collectorID
+        }))
+        // el-select 是 remote 搜索的，没有候选项就显示不出名字：把已有的人预置进候选
+        this.collectorsOptions = collectors.map(c => ({
+          collectorID: c.collectorID,
+          collectorFirstName: c.collectorName || '',
+          collectorLastName: ''
+        }))
       }).catch(() => { this.$message.error('Failed to load locality') })
     },
     onSubmit() {
+      if (this.submitting) return // 防重复提交：失败后再点会撞 FieldNo 唯一约束
+      this.submitting = true
+      // 只提交真正选了人的行（表格默认带一行空的）。
+      // manageCollectors 告诉后端"这份列表是完整的、可以照它重写"——旧版前端没有这个标记，
+      // 后端就不会去动关联行，避免后端先上线时把采集人清空。
+      const payload = Object.assign({}, this.form, {
+        manageCollectors: true,
+        zCollectorsLocality: (this.form.zCollectorsLocality || []).filter(c => c && c.collectorID)
+      })
       if (this.isEdit) {
-        updateLocality(Object.assign({ localityId: this.externalLocalityId }, this.form)).then(() => {
+        updateLocality(Object.assign({ localityId: this.externalLocalityId }, payload)).then((response) => {
           this.$message.success('Locality updated')
+          this.showWarnings(response)
           this.$emit('saved')
-        }).catch(err => { this.$message.error((err && err.message) || 'Update failed') })
+        }).catch(err => { this.$message.error(this.errText(err, 'Update failed')) })
+          .finally(() => { this.submitting = false })
         return
       }
-      addNewLocality(this.form).then((response) =>{
-        this.$message('submit!')
+      // 之前这里没有 .catch，后端 500 在界面上完全静默（只能在 Network 里看到）
+      addNewLocality(payload).then((response) => {
+        this.$message.success('Locality created')
+        this.showWarnings(response)
         this.enableLotSection(response.data.localityID)
-      })
+      }).catch(err => { this.$message.error(this.errText(err, 'Create failed')) })
+        .finally(() => { this.submitting = false })
+    },
+    // 后端"存了但有疑点"的提醒（如 EndDate 早于 StartDate）——保存成功但要让人看见
+    showWarnings(response){
+      const warnings = (response && response.data && response.data.warnings) || []
+      warnings.forEach(w => this.$message({ message: w, type: 'warning', duration: 8000 }))
+    },
+    // 后端错误优先取 detail（FastAPI 的 HTTPException 格式），退回 axios 的 message
+    errText(err, fallback) {
+      const detail = err && err.response && err.response.data && err.response.data.detail
+      return detail || (err && err.message) || fallback
     },
 
     onCancel() {
@@ -519,6 +593,12 @@ export default {
 
 .line{
   text-align: center;
+}
+
+/* 已在模板里用了两处（GEOLocate 说明、Verbatim Date 说明），之前没定义 */
+.muted{
+  color: #909399;
+  font-size: 12px;
 }
 </style>
 
