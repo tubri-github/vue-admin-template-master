@@ -32,7 +32,9 @@
       </el-form-item>
       <el-form-item label="Date Cataloged">
         <el-col :span="11">
-          <el-date-picker v-model="form.dateCataloged" type="date" placeholder="Pick a date" style="width: 100%;" />
+          <!-- value-format 必须给：否则发的是带 Z 的完整 ISO，root 走存储过程落成 00:00、
+               子节点直接存落成 05:00，同一天建的父子记录日期对不上 -->
+          <el-date-picker v-model="form.dateCataloged" type="date" value-format="yyyy-MM-dd" placeholder="Pick a date" style="width: 100%;" />
         </el-col>
       </el-form-item>
       <el-form-item label="Jar Size">
@@ -118,7 +120,7 @@
             label="Date"
             width="180">
             <template slot-scope="{row}">
-              <el-date-picker v-model="row.date"  type="date" placeholder="Pick a date" style="width: 100%;" />
+              <el-date-picker v-model="row.date" type="date" value-format="yyyy-MM-dd" placeholder="Pick a date" style="width: 100%;" />
             </template>
           </el-table-column>
           <el-table-column
@@ -616,8 +618,14 @@ export default {
         this.$message.success('Created lot #' + items.CatalogNumber + ' — add sub-records below.')
         return this.reloadTree().then(() => this.enterSubMode(items.PrimaryID, '#' + items.CatalogNumber))
       }).catch(err => {
-        this.$message.error((err && err.message) || 'Failed to save')
+        this.$message.error(this.errText(err, 'Failed to save'))
       }).then(() => { this.saving = false })
+    },
+    // 后端 HTTPException 的 detail 才有具体原因；只取 err.message 的话
+    // 永远只能看到 "Request failed with status code 500"，远端排查等于没有信息
+    errText(err, fallback) {
+      const detail = err && err.response && err.response.data && err.response.data.detail
+      return detail || (err && err.message) || fallback
     },
     onCancel() {
       this.$message({ message: 'cancel!', type: 'warning' })
@@ -751,7 +759,7 @@ export default {
         return this.reloadTree()
       }).catch(err => {
         if (err === 'cancel' || err === 'close') return
-        this.$message.error((err && err.message) || 'Failed to delete')
+        this.$message.error(this.errText(err, 'Failed to delete'))
       }).then(() => { this.deleting = false })
     }
   }
