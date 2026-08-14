@@ -58,6 +58,11 @@
           <span class="opt follow">Follow the Catalog</span> — records your intention to move these
           taxa later. <u>It changes nothing now</u> and records keep being held back, because
           actually moving a family is a separate bulk operation.
+          <span class="opt move">Neither is right</span> — open the row, tick the taxa that are
+          filed wrongly on both counts, and move them to the family you choose (creating it if
+          we do not have it). <u>This one does change the taxonomy</u>: those taxa get a new
+          family. Specimens are not re-identified, the old family is recorded for every taxon,
+          and the move can be undone.
           <span class="opt none">Do nothing</span> — records keep being held back for review.
         </p>
       </div>
@@ -87,15 +92,44 @@
             <div v-loading="taxaLoading[pairKey(row)]" class="taxa-detail">
               <p class="muted small">
                 The {{ row.taxa }} taxa this decision covers — these are the records that get
-                held back on every import until it is settled.
+                held back on every import until it is settled. Tick any that belong in a
+                different family altogether.
               </p>
-              <el-table :data="taxaByPair[pairKey(row)] || []" size="mini" border max-height="320">
+              <el-table
+                :ref="taxaRef(row)"
+                :data="taxaByPair[pairKey(row)] || []"
+                size="mini"
+                border
+                max-height="320"
+                @selection-change="sel => onTaxaSelect(row, sel)"
+              >
+                <el-table-column type="selection" width="40" />
                 <el-table-column label="ID" prop="TaxonID" width="70" />
                 <el-table-column label="Scientific name" prop="full_name" min-width="220" />
                 <el-table-column label="Genus" prop="genus" width="150" />
                 <el-table-column label="Species" prop="species" width="150" />
                 <el-table-column label="Specimens" prop="specimens" width="95" align="right" />
               </el-table>
+
+              <div class="taxa-toolbar">
+                <span v-if="selectedCount(row)" class="sel-count">
+                  {{ selectedCount(row) }} selected ·
+                  {{ selectedSpecimens(row) }} specimens
+                </span>
+                <span v-else class="muted small">
+                  Neither <b>{{ row.local_family }}</b> nor <b>{{ row.reference_family }}</b> is
+                  right for some of these? Tick them and move them where they belong.
+                </span>
+                <el-button
+                  size="mini"
+                  type="primary"
+                  plain
+                  :disabled="!selectedCount(row)"
+                  @click="openMove(row)"
+                >
+                  Move selected to another family…
+                </el-button>
+              </div>
             </div>
           </template>
         </el-table-column>
@@ -120,6 +154,11 @@
             </el-button>
             <el-button size="mini" type="warning" plain @click="rule(row, 'adopt_reference')">
               Follow the Catalog
+            </el-button>
+            <!-- Opens the row and ticks everything, so "the whole pair belongs elsewhere" is
+                 one click, while the curator still sees exactly what is about to move. -->
+            <el-button size="mini" type="text" class="neither" @click="neither(row)">
+              Neither is right…
             </el-button>
           </template>
         </el-table-column>
@@ -193,6 +232,70 @@
           Revoking keeps the row — who decided what, and when, stays in the record — and that pair
           starts being held back for review again.
         </p>
+
+        <!-- Moves are shown next to the rulings on purpose: they answer the same question, and
+             a curator looking for "what did we decide about this family" should not have to
+             know that one answer was recorded and another was carried out. -->
+        <h4 class="sub-head">Families actually moved</h4>
+        <p class="muted small">
+          These changed the taxonomy: the taxa listed were repointed to a different family.
+          Specimens were not touched — each one kept its identification, and the taxon it hangs
+          off simply moved.
+        </p>
+        <el-table :data="moves" size="mini" border @expand-change="onMoveExpand">
+          <el-table-column type="expand">
+            <template slot-scope="{ row }">
+              <div v-loading="moveTaxaLoading[row.id]" class="taxa-detail">
+                <el-table :data="moveTaxa[row.id] || []" size="mini" border max-height="300">
+                  <el-table-column label="ID" prop="taxon_id" width="70" />
+                  <el-table-column label="Scientific name" prop="full_name" min-width="200" />
+                  <el-table-column label="Was" prop="old_family_name" width="160" />
+                  <el-table-column label="Now" prop="new_family_name" width="160" />
+                  <el-table-column label="Specimens" prop="usage_count" width="95" align="right" />
+                </el-table>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="Move" min-width="280">
+            <template slot-scope="{ row }">
+              <div>
+                <b>{{ row.taxa_count }}</b> taxa
+                <span v-if="row.source_local_family" class="muted">
+                  from {{ row.source_local_family }} </span>
+                <span class="muted">→</span>
+                <b>{{ row.target_family_name }}</b>
+                <el-tag v-if="row.target_family_created" type="warning" size="mini">
+                  new family
+                </el-tag>
+              </div>
+              <div v-if="row.note" class="muted xsmall">{{ row.note }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="Specimens" prop="specimens_count" width="95" align="right" />
+          <el-table-column label="By" min-width="150">
+            <template slot-scope="{ row }">
+              {{ row.performed_by }}
+              <div class="muted xsmall">{{ shortDate(row.performed_at) }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="Status" width="90">
+            <template slot-scope="{ row }">
+              <el-tag :type="row.status === 'undone' ? 'info' : 'success'" size="mini">
+                {{ row.status }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column width="90" align="center">
+            <template slot-scope="{ row }">
+              <el-button
+                v-if="row.status === 'applied'"
+                size="mini"
+                type="text"
+                @click="undoMove(row)"
+              >Undo</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
       </template>
     </decision-section>
 
@@ -278,6 +381,75 @@
       </template>
     </decision-section>
 
+    <!-- ------------------------------- move dialog -------------------------------- -->
+    <el-dialog :visible.sync="moveDlg" title="Move taxa to another family" width="660px">
+      <div v-if="movePair">
+        <p class="dlg-name">
+          {{ moveRows.length }} taxa from {{ movePair.local_family }}
+          <span class="muted">
+            ({{ moveRows.reduce((s, r) => s + (r.specimens || 0), 0) }} specimens)
+          </span>
+        </p>
+        <p class="muted small">
+          We file them under <b>{{ movePair.local_family }}</b>, the Catalog says
+          <b>{{ movePair.reference_family }}</b>. Pick where they actually belong — including a
+          family that is not in our table yet.
+        </p>
+
+        <div class="picker-row">
+          <family-picker v-model="moveTargetId" @change="onTargetPicked" />
+          <span v-if="moveTargetName" class="muted small">
+            → moving them to <b>{{ moveTargetName }}</b>
+          </span>
+        </div>
+
+        <el-alert v-if="movePreview" :closable="false" type="info" class="preview">
+          <div>
+            <b>{{ movePreview.taxa_count }}</b> taxa
+            (<b>{{ movePreview.specimens_count }}</b> specimens) will move to
+            <b>{{ movePreview.target.family_name }}</b>.
+            <el-tag v-if="!movePreview.target.exists" type="warning" size="mini">
+              this family will be created
+            </el-tag>
+          </div>
+          <div v-if="movePreview.already_in_target.length" class="muted small">
+            {{ movePreview.already_in_target.length }} of the selected taxa are already in that
+            family and will be skipped.
+          </div>
+          <div class="muted small">
+            Specimens are not re-identified. Every taxon's previous family is recorded and the
+            whole move can be undone.
+          </div>
+          <!-- Moving to a family CoF still disagrees with does not end the argument, it renames
+               it. Saying so here beats the curator discovering it on the next import. -->
+          <div v-if="movePreview.rulings_to_create.length" class="warn small">
+            The Catalog files some of these under
+            {{ movePreview.rulings_to_create.join(', ') }}, so
+            {{ movePreview.target.family_name }} would start being flagged instead. That
+            follow-up warning will be silenced automatically — it shows up as a “Keep ours”
+            ruling above, and undoing the move revokes it.
+          </div>
+        </el-alert>
+
+        <el-input
+          v-model="moveNote"
+          type="textarea"
+          :rows="2"
+          placeholder="Note (optional) — why this family, e.g. which authority you followed"
+          class="note"
+        />
+      </div>
+      <span slot="footer">
+        <el-button @click="moveDlg = false">Cancel</el-button>
+        <el-button
+          type="primary"
+          :loading="moving"
+          :disabled="!movePreview || !movePreview.taxa_count"
+          @click="doMove"
+        >Move {{ movePreview ? movePreview.taxa_count : '' }} taxa</el-button>
+      </span>
+    </el-dialog>
+
     <!-- ------------------------------- merge dialog ------------------------------- -->
     <el-dialog :visible.sync="mergeDlg" title="Merge duplicate taxa" width="620px">
       <div v-if="mergeTarget">
@@ -337,12 +509,16 @@
 
 <script>
 import DecisionSection from './DecisionSection'
-import { getDisagreements, getDisagreementTaxa, getRulings, addRuling, revokeRuling } from '@/api/familyPolicy'
+import FamilyPicker from '@/components/FamilyPicker'
+import {
+  getDisagreements, getDisagreementTaxa, getRulings, addRuling, revokeRuling,
+  previewReassign, reassignFamily, getReassignHistory, getReassignTaxa, undoReassign
+} from '@/api/familyPolicy'
 import { getDuplicateGroups, previewMerge, mergeTaxa, undoMerge, getMergeHistory } from '@/api/taxonMerge'
 
 export default {
   name: 'DataQualityPanel',
-  components: { DecisionSection },
+  components: { DecisionSection, FamilyPicker },
   props: {
     // Set when the recheck tab hands over a specific disagreement: {local_family,
     // reference_family}. That row is highlighted and opened so the curator lands on it
@@ -362,6 +538,21 @@ export default {
       taxaByPair: {},
       taxaLoading: {},
 
+      // Per-pair tick state. Keyed by pair, not global: several rows can be open at once and
+      // a selection must not leak from one family disagreement into another.
+      selectedByPair: {},
+      moveDlg: false,
+      movePair: null,
+      moveRows: [],
+      moveTargetId: null,
+      moveTargetName: '',
+      movePreview: null,
+      moveNote: '',
+      moving: false,
+      moves: [],
+      moveTaxa: {},
+      moveTaxaLoading: {},
+
       dupLoading: false,
       dupGroups: [],
       mergeHistory: [],
@@ -379,7 +570,9 @@ export default {
   },
   watch: {
     // the preview follows whichever row the curator picks to keep
-    winnerId(id) { if (id && this.mergeTarget) this.loadPreview(id) }
+    winnerId(id) { if (id && this.mergeTarget) this.loadPreview(id) },
+    // ...and, for a move, whichever family they point at
+    moveTargetId(id) { this.loadMovePreview(id) }
   },
   created() {
     this.loadFamily()
@@ -392,12 +585,18 @@ export default {
     async loadFamily() {
       this.famLoading = true
       try {
-        const [dis, rul] = await Promise.all([getDisagreements(false), getRulings(false)])
+        const [dis, rul, mov] = await Promise.all([
+          getDisagreements(false), getRulings(false), getReassignHistory()
+        ])
         this.famPairs = (dis.data && dis.data.pairs) || []
         this.famCaveat = (dis.data && dis.data.reference_caveat) || ''
         this.rulings = (rul.data && rul.data.items) || []
         this.coveredTaxa = (rul.data && rul.data.covered_taxa) || 0
         this.coveredDets = (rul.data && rul.data.covered_determinations) || 0
+        this.moves = (mov.data && mov.data.items) || []
+        // a moved taxon is no longer in the pair it came from, so cached lists are stale
+        this.taxaByPair = {}
+        this.selectedByPair = {}
         this.$nextTick(this.revealFocused)
       } catch (e) {
         this.$message.error('Failed to load family disagreements')
@@ -486,6 +685,119 @@ export default {
         this.loadFamily()
       } else {
         this.$message.error(res.message)
+      }
+    },
+
+    // ---- A2. "neither is right": move taxa to a family the curator picks -----------
+    taxaRef(row) { return `taxa_${this.pairKey(row)}` },
+    onTaxaSelect(row, sel) { this.$set(this.selectedByPair, this.pairKey(row), sel) },
+    selected(row) { return this.selectedByPair[this.pairKey(row)] || [] },
+    selectedCount(row) { return this.selected(row).length },
+    selectedSpecimens(row) {
+      return this.selected(row).reduce((s, r) => s + (r.specimens || 0), 0)
+    },
+    // Row-level shortcut: open the row, load its taxa, tick everything, open the dialog. The
+    // curator still sees the full list before committing -- a pair can carry 700 taxa.
+    async neither(row) {
+      const table = this.$refs.famTable
+      if (table) table.toggleRowExpansion(row, true)
+      await this.onExpand(row, true)
+      await this.$nextTick()
+      const inner = this.$refs[this.taxaRef(row)]
+      const t = Array.isArray(inner) ? inner[0] : inner
+      if (t) t.toggleAllSelection()
+      await this.$nextTick()
+      if (this.selectedCount(row)) this.openMove(row)
+    },
+    openMove(row) {
+      this.movePair = row
+      this.moveRows = this.selected(row).slice()
+      this.moveTargetId = null
+      this.moveTargetName = ''
+      this.movePreview = null
+      this.moveNote = ''
+      this.moveDlg = true
+    },
+    onTargetPicked({ familyName }) { this.moveTargetName = familyName || '' },
+    async loadMovePreview(familyId) {
+      if (!familyId || !this.moveRows.length) { this.movePreview = null; return }
+      try {
+        const res = await previewReassign({
+          taxon_ids: this.moveRows.map(r => r.TaxonID),
+          target_family_id: familyId,
+          performed_by: this.curator
+        })
+        this.movePreview = res.code === 20000 ? res.data : null
+      } catch (e) {
+        this.movePreview = null
+      }
+    },
+    async doMove() {
+      const p = this.movePreview
+      try {
+        await this.$confirm(
+          `Move ${p.taxa_count} taxa (${p.specimens_count} specimens) out of
+           ${this.movePair.local_family} into ${p.target.family_name}?
+
+           This changes the taxonomy. Every taxon's previous family is recorded and the move
+           can be undone from "what has already been decided".`,
+          'Move to another family', { type: 'warning' })
+      } catch (e) { return }
+      this.moving = true
+      try {
+        const res = await reassignFamily({
+          taxon_ids: this.moveRows.map(r => r.TaxonID),
+          target_family_id: this.moveTargetId,
+          source_local_family: this.movePair.local_family,
+          source_reference_family: this.movePair.reference_family,
+          note: this.moveNote || null,
+          performed_by: this.curator
+        })
+        if (res.code === 20000) {
+          this.$message.success(res.message)
+          this.moveDlg = false
+          this.$emit('data-changed')
+          this.loadFamily()
+        } else {
+          this.$message.error(res.message)
+        }
+      } catch (e) {
+        // the interceptor already surfaced the server's message
+      } finally {
+        this.moving = false
+      }
+    },
+    async onMoveExpand(row, expanded) {
+      const open = Array.isArray(expanded) ? expanded.includes(row) : expanded
+      if (!open || this.moveTaxa[row.id]) return
+      this.$set(this.moveTaxaLoading, row.id, true)
+      try {
+        const res = await getReassignTaxa(row.id)
+        this.$set(this.moveTaxa, row.id, (res.data && res.data.items) || [])
+      } catch (e) {
+        this.$message.error('Failed to load the moved taxa')
+      } finally {
+        this.$set(this.moveTaxaLoading, row.id, false)
+      }
+    },
+    async undoMove(row) {
+      try {
+        await this.$confirm(
+          `Put these ${row.taxa_count} taxa back into the family they came from?
+           Any warning this move silenced starts again.`, 'Undo move', { type: 'warning' })
+      } catch (e) { return }
+      try {
+        const res = await undoReassign(row.id, { undone_by: this.curator })
+        if (res.code === 20000) {
+          this.$message.success(res.message)
+          this.$set(this.moveTaxa, row.id, undefined)
+          this.$emit('data-changed')
+          this.loadFamily()
+        } else {
+          this.$message.error(res.message)
+        }
+      } catch (e) {
+        // refused undos (a taxon moved again since) are reported by the interceptor
       }
     },
 
@@ -580,10 +892,21 @@ export default {
 .opt { display: inline-block; padding: 0 6px; border-radius: 3px; font-weight: 600; }
 .opt.keep { background: #f0f9eb; color: #67c23a; }
 .opt.follow { background: #fdf6ec; color: #e6a23c; }
+.opt.move { background: #ecf5ff; color: #409eff; }
 .opt.none { background: #f4f4f5; color: #909399; }
 .hint { color: #409eff; }
 .taxa-detail { padding: 6px 12px 10px; background: #fafcff; }
 .focus-note { margin-bottom: 10px; }
+.taxa-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+.sel-count { font-size: 12px; font-weight: 600; color: #409eff; }
+.sub-head { margin: 18px 0 4px; font-size: 13px; font-weight: 600; color: #303133; }
+.xsmall { font-size: 11px; }
 /* not scoped: el-table renders rows outside this component's scope id */
 </style>
 
@@ -595,4 +918,6 @@ export default {
 .winner-radio { display: block; margin: 0 0 8px; }
 .preview { margin-top: 8px; }
 .note { margin-top: 12px; }
+.picker-row { display: flex; align-items: center; gap: 10px; margin: 14px 0 4px; }
+.neither { margin-left: 6px; }
 </style>

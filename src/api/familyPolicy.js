@@ -8,6 +8,11 @@
  * keep_local      suppresses the warning for that pair (the museum keeps its family)
  * adopt_reference records the intent to move; does NOT suppress, because actually moving a
  *                 family is a separate bulk edit that rewrites TaxonomicTable.FamilyID
+ *
+ * The reassign* calls are the third answer -- "neither family is right" -- and unlike the two
+ * rulings above they DO change data: they rewrite TaxonomicTable.FamilyID for the taxa the
+ * curator selected. Determination is untouched, every taxon's previous family is recorded, and
+ * the whole move is undoable.
  */
 import request from '@/utils/request'
 
@@ -54,6 +59,57 @@ export function addRuling(data) {
 export function revokeRuling(rulingId, data) {
   return request({
     url: prefix + `/${rulingId}/revoke`,
+    method: 'post',
+    data
+  })
+}
+
+// ---------------------------------------------------------------------------------------
+// Reassignment -- the "neither is right" answer. Changes data.
+// ---------------------------------------------------------------------------------------
+
+// Dry run. Returns what would move, what is already in the target family, and -- the part
+// worth showing the curator -- which NEW disagreements the move would create, because moving
+// to a family CoF still argues with relocates the warning instead of ending it.
+export function previewReassign(data) {
+  return request({
+    url: prefix + '/reassign/preview',
+    method: 'post',
+    data
+  })
+}
+
+// { taxon_ids, target_family_id | target_family_name, source_local_family,
+//   source_reference_family, note, performed_by }
+export function reassignFamily(data) {
+  return request({
+    url: prefix + '/reassign',
+    method: 'post',
+    data
+  })
+}
+
+export function getReassignHistory(limit = 50) {
+  return request({
+    url: prefix + '/reassign/history',
+    method: 'get',
+    params: { limit }
+  })
+}
+
+// Per-taxon before/after of one move, straight from the audit table.
+export function getReassignTaxa(opId) {
+  return request({
+    url: prefix + `/reassign/${opId}/taxa`,
+    method: 'get'
+  })
+}
+
+// Refused by the server if any of the taxa moved again since -- restoring would silently
+// overwrite the later decision.
+export function undoReassign(opId, data) {
+  return request({
+    url: prefix + `/reassign/${opId}/undo`,
     method: 'post',
     data
   })
