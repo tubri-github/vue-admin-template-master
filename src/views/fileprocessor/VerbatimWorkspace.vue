@@ -268,6 +268,12 @@
               </el-input>
             </el-col>
             <el-col :span="24" class="text-right">
+              <!-- One decision per imported name instead of one per record: the importer does
+                   not deduplicate names, so a batch can ask for the same judgement 1300 times. -->
+              <el-button type="primary" plain style="margin-right: 10px;" @click="nameGroupsOpen = true">
+                <i class="el-icon-collection"></i>
+                Decide by name
+              </el-button>
               <el-dropdown @command="handleBatchAction" style="margin-right: 10px;">
                 <el-button>
                   Batch Actions <i class="el-icon-arrow-down el-icon--right"></i>
@@ -300,14 +306,16 @@
           </el-row>
         </div>
 
-        <!-- 记录表格 -->
+        <!-- 记录表格。
+             注意这里没有 @row-click：一行里现在有可点的东西（Something wrong? 菜单、
+             Apply），行级 handler 会把它们全吞掉——点菜单结果弹出详情。要开详情点
+             Actions 列的 Edit。 -->
         <el-table
           ref="recordsTable"
           :data="batchRecords"
           v-loading="loadingRecords"
           stripe
           height="600"
-          @row-click="editRecord"
           @selection-change="handleSelectionChange">
 
           <el-table-column
@@ -369,6 +377,21 @@
                     </el-tag>
                   </el-tooltip>
                 </div>
+                <!-- The taxon on this record was not found by matching this batch: it was
+                     pre-filled from a decision a curator made on an EARLIER batch. The record
+                     is still pending on purpose — an inherited answer has to be confirmed
+                     knowingly, otherwise one wrong old ruling spreads through every future
+                     delivery unnoticed. -->
+                <div v-if="scope.row.historicalDecision" class="suggestion-info">
+                  <el-tooltip
+                    :content="historicalDecisionTooltip(scope.row)"
+                    placement="top">
+                    <el-tag size="mini" type="warning">
+                      <i class="el-icon-time"></i>
+                      Previously corrected
+                    </el-tag>
+                  </el-tooltip>
+                </div>
                 <!-- 来源科 ≠ 匹配科：分类问题，显眼提示在 species 这边 -->
                 <div v-if="familyMismatch(scope.row)" class="suggestion-info">
                   <el-tooltip
@@ -384,6 +407,15 @@
                 <div v-if="scope.row.verificationInfo && scope.row.verificationInfo.species.verified_by_name" class="verification-info">
                   <el-tooltip :content="`Verified by ${scope.row.verificationInfo.species.verified_by_name} at ${formatDateTime(scope.row.verificationInfo.species.verified_at)}`" placement="top">
                     <i class="el-icon-user verification-icon"></i>
+                  </el-tooltip>
+                </div>
+                <!-- verified 但没人署名 = 导入时 exact match 自动配的，没人看过。
+                     curator 问的"这条我是不是已经做过了"就是这个区分。 -->
+                <div v-else-if="autoVerifiedSpecies(scope.row)" class="verification-info">
+                  <el-tooltip
+                    content="Matched automatically on import (exact name match) — nobody has confirmed it"
+                    placement="top">
+                    <el-tag size="mini" type="info">auto</el-tag>
                   </el-tooltip>
                 </div>
               </div>
@@ -443,13 +475,19 @@
               <div v-else-if="scope.row.suggestedTaxonomic" class="suggested-species">
                 <div class="suggested-text-wrapper">
                   <span class="suggested-species-name">{{scope.row.suggestedTaxonomic.FullName}}</span>
+                  <!-- Apply 应用的是这个名字，不是这一条记录。同一个名字在一批里出现几百
+                       上千次是常态（campostoma anomalum 1362 条），一条条点是同一个判断
+                       做 1362 遍。按钮上直接写清楚会动几条，并且有二次确认、可撤销。 -->
                   <el-button
                     v-if="getSpeciesVerificationStatus(scope.row) !== 'verified'"
                     type="success"
                     size="mini"
                     :loading="applyingRecordId === scope.row.id"
                     @click.stop="applySuggestion(scope.row)">
-                    <span v-if="applyingRecordId !== scope.row.id">Apply</span>
+                    <span v-if="applyingRecordId !== scope.row.id">
+                      Apply<template v-if="scope.row.same_name_pending > 1">
+                        ×{{scope.row.same_name_pending}}</template>
+                    </span>
                   </el-button>
                 </div>
                 <div v-if="scope.row.suggestedTaxonomic.Family" class="text-xs text-gray-500">
@@ -590,6 +628,7 @@
       @close="closeRecordEditor"
       @save="handleRecordSave"
       @partial-saved="handlePartialSaved"
+      @fix-family="openFamilyMoveForTaxon"
     />
 
     <!-- 批量操作确认对话框 -->
@@ -609,12 +648,34 @@
         <el-button type="primary" @click="confirmBatchAction" :loading="performingBatchAction">Confirm</el-button>
       </div>
     </el-dialog>
+
+    <name-groups-panel
+      :visible-sync.sync="nameGroupsOpen"
+      :batch-serial-id="selectedBatchId"
+      :curator="curatorName"
+      :initial-filter="nameGroupsFilter"
+      @applied="onNameGroupApplied"
+    />
+
+    <!-- 改科就地弹窗：跟 Synonym Review 用的是同一个组件，curator 不用离开这个批次 -->
+    <family-move-dialog
+      :visible.sync="familyMoveOpen"
+      :taxa="familyMoveTaxa"
+      :source-local-family="familyMoveFrom"
+      :source-reference-family="null"
+      :curator="curatorName"
+      @moved="onFamilyMoved"
+    />
   </div>
 </template>
 
 <script>
 import RecordEditorDialog from '@/components/RecordsProcessor/RecordEditorDialog.vue'
 import FieldFilterChips from '@/components/FieldFilterChips/index.vue'
+import NameGroupsPanel from './NameGroupsPanel.vue'
+import FamilyMoveDialog from '@/components/FamilyMoveDialog'
+import { getTaxonForMove } from '@/api/familyPolicy'
+import { applyNameGroup, previewNameGroup } from '@/api/verbatimworkspace'
 import request from '@/utils/request'
 import {
   getVerbatimBatches,
@@ -633,10 +694,21 @@ export default {
   name: 'VerbatimWorkspace',
   components: {
     RecordEditorDialog,
-    FieldFilterChips
+    FieldFilterChips,
+    NameGroupsPanel,
+    FamilyMoveDialog
   },
   data() {
     return {
+      // 按名字批量决定（一个名字一次，而不是一条记录一次）
+      nameGroupsOpen: false,
+      nameGroupsFilter: '',
+
+      // 改科弹窗（就地，不跳页）
+      familyMoveOpen: false,
+      familyMoveTaxa: [],
+      familyMoveFrom: '',
+
       // 批次相关
       selectedBatchId: '',
       availableBatches: [],
@@ -722,6 +794,9 @@ export default {
     }
   },
   computed: {
+    // 谁做的决定要留在 batch_name_group_apply 里，跟 DataQualityPanel 取同一个来源
+    curatorName() { return this.$store.getters.name || 'curator' },
+
     // 把导入时的 field mapping（{field: 源列}）转成表格行展示
     mappingRows() {
       const m = this.currentBatch && this.currentBatch.fieldMappings;
@@ -955,6 +1030,13 @@ export default {
 
               verificationInfo: record.verification_info || null,
               processingStatus: record.processing_status,
+              // 这一批里还有多少条记录挂着同一个名字、同一个建议 —— Apply 按钮拿它决定
+              // 是改一条还是把这个名字整批应用
+              same_name_pending: record.same_name_pending || 0,
+              // 同名的全部待处理数（不看当初匹配到什么）—— 编辑弹窗保存后的追问用它
+              same_name_pending_any: record.same_name_pending_any || 0,
+              // 这条的 taxon 不是这批匹配出来的，是沿用之前某一批 curator 的裁定
+              historicalDecision: record.historical_decision || null,
               _apiData: record
             };
           });
@@ -1047,6 +1129,12 @@ export default {
       await this.loadBatchRecords();
     },
 
+    // 按名字批量应用/撤销之后：这一次可能改了上千条记录，表格和进度都得重拉
+    async onNameGroupApplied() {
+      await this.loadBatchRecords();
+      await this.fetchVerificationSummary();
+    },
+
     // 分页处理
     async handlePageChange(page) {
       this.currentPage = page;
@@ -1057,6 +1145,41 @@ export default {
       this.pageSize = size;
       this.currentPage = 1;
       await this.loadBatchRecords();
+    },
+
+    // 跟后端 name-group 的分组键一致：小写的 "genus species"
+    verbatimNameKey(record) {
+      const v = record.verbatimTaxonomic || {};
+      return `${v.verbatimGenus || ''} ${v.verbatimSpecies || ''}`
+        .replace(/\s+/g, ' ').trim().toLowerCase();
+    },
+
+    // 科不在记录上，在 taxon 上。从编辑弹窗里开那个共用的移动对话框。
+    async openFamilyMoveForTaxon(taxonId) {
+      try {
+        const res = await getTaxonForMove(taxonId);
+        if (res.code !== 20000) { this.$message.error(res.message); return; }
+        const t = res.data.taxon;
+        this.familyMoveTaxa = [{
+          TaxonID: t.TaxonID, full_name: t.full_name, specimens: t.specimens
+        }];
+        this.familyMoveFrom = t.family_name || '';
+        this.familyMoveOpen = true;
+      } catch (e) {
+        this.$message.error('Failed to load that taxon');
+      }
+    },
+
+    // 科变了 -> 这条记录显示的科也变了，而且 family 警告可能不再成立，重拉表格
+    async onFamilyMoved() {
+      await this.loadBatchRecords();
+      await this.fetchVerificationSummary();
+    },
+
+    // verified 但 verbatim 行上没有署名 → 是导入时自动配的，不是人确认的
+    autoVerifiedSpecies(record) {
+      const s = record.verificationInfo && record.verificationInfo.species;
+      return !!s && s.status === 'verified' && !s.verified_by_name;
     },
 
     // 获取物种验证状态
@@ -1236,6 +1359,19 @@ export default {
       return tooltip;
     },
 
+    // Whose earlier decision this record's taxon was inherited from. Naming the person and
+    // the batch is the whole safeguard: the curator can see it is second-hand and go check
+    // that batch if it looks wrong.
+    historicalDecisionTooltip(record) {
+      const d = record.historicalDecision;
+      if (!d) return '';
+      const who = d.decided_by || 'someone';
+      const when = d.decided_at ? this.formatDateTime(d.decided_at) : 'an earlier batch';
+      const batch = d.source_batch ? ` in batch ${d.source_batch}` : '';
+      return `This name was decided to mean ${d.taxon_name || 'this taxon'} by ${who} ` +
+        `on ${when}${batch}. The answer is filled in but still needs your confirmation.`;
+    },
+
     // 应用分类建议
     async applySuggestion(record) {
       // 检查是否有建议的物种信息
@@ -1244,7 +1380,45 @@ export default {
         return;
       }
 
-      // 设置loading状态
+      const key = this.verbatimNameKey(record);
+      const sameName = record.same_name_pending || 1;
+
+      // 同一个名字在一批里出现上百上千次是常态，而它们是同一个判断。确认一次就把这个名字
+      // 全批应用掉，不让 curator 把同一件事做 1362 遍。改动可撤销（Decide by name 抽屉里
+      // 有历史和 Undo）。
+      if (sameName > 1 && key) {
+        try {
+          await this.$confirm(
+            `Apply ${record.suggestedTaxonomic.FullName} to all ${sameName} records in this
+             batch imported as "${key}"?
+
+             They are the same name, so this is one decision. It can be undone.`,
+            'Apply to this name', { type: 'warning', confirmButtonText: `Apply to ${sameName}` });
+        } catch (e) { return }
+
+        this.applyingRecordId = record.id;
+        try {
+          const res = await applyNameGroup(this.selectedBatchId, {
+            name_key: key,
+            taxon_id: record.suggestedTaxonomic.TaxonID,
+            applied_by: this.curatorName
+          });
+          if (res.code === 20000) {
+            this.$message.success(res.message);
+            await this.loadBatchRecords();
+            await this.fetchVerificationSummary();
+          } else {
+            this.$message.error(res.message);
+          }
+        } catch (error) {
+          // interceptor 已经报过了
+        } finally {
+          this.applyingRecordId = null;
+        }
+        return;
+      }
+
+      // 这个名字在这批里只此一条，就地改这一条
       this.applyingRecordId = record.id;
 
       try {
@@ -1253,6 +1427,9 @@ export default {
           id: record.id,
           taxon_id: record.suggestedTaxonomic.TaxonID,
           species_verification_status: 'verified',
+          // 谁按的。导入时 exact match 会自动写同样的 TaxonID + verified，
+          // 不带这个就分不出这条是人确认的还是系统自己配的
+          verified_by: this.curatorName,
           verification_notes: 'Applied taxonomic suggestion from workspace'
         };
 
@@ -1378,6 +1555,11 @@ export default {
 
     // 处理记录保存
     async handleRecordSave(updatedRecord) {
+      // 保存前先记住这条原本的样子：保存后列表会重载，就问不出"这个名字还有多少条在等"了
+      const before = this.records.find(r => r.id === updatedRecord.id) || {};
+      const siblings = (before.same_name_pending_any || 0) - 1;
+      const nameKey = this.verbatimNameKey(before);
+
       try {
         const response = await updateVerbatimRecord(updatedRecord);
         if (response.code === 20000) {
@@ -1386,10 +1568,65 @@ export default {
           await this.loadBatchRecords();
           // 重新获取验证统计信息，反映最新的 errors/warnings 数量
           await this.fetchVerificationSummary();
+
+          // 同一个 verbatim 名字就是同一个鉴定。curator 在弹窗里刚判完一条，剩下几百条
+          // 一模一样的还在队列里等着 —— 不问一句，他就得把同一件事再做几百遍。
+          if (siblings > 0 && nameKey &&
+              updatedRecord.species_verification_status === 'verified' &&
+              updatedRecord.taxon_id) {
+            await this.offerToApplyToWholeName(nameKey, updatedRecord.taxon_id, siblings);
+          }
         }
       } catch (error) {
         this.$message.error('Failed to update record');
         console.error(error);
+      }
+    },
+
+    // 弹窗里判完一条之后，问要不要把同名的其余记录一起处理掉。
+    // 走 whole_name 模式：curator 很可能否决了系统建议、选了别的 taxon，那些记录当初匹配到
+    // 的是别的东西，按"同名同建议"筛会一条都选不到。
+    async offerToApplyToWholeName(nameKey, taxonId, siblings) {
+      let preview;
+      try {
+        const res = await previewNameGroup(this.selectedBatchId, {
+          name_key: nameKey, taxon_id: taxonId, whole_name: true
+        });
+        if (res.code !== 20000 || !res.data || !res.data.records_to_apply) return;
+        preview = res.data;
+      } catch (e) {
+        return; // 追问是锦上添花，问不出来就算了，别打扰刚保存成功的人
+      }
+
+      let msg = `${preview.records_to_apply} more record(s) in this batch were imported as ` +
+        `"${nameKey}" and are still waiting.\n\nApply ${preview.taxon.full_name} to them too?`;
+      if (preview.family_reference_warning) {
+        msg += `\n\nFlagged on each: ${preview.family_reference_warning.message}`;
+      }
+      msg += '\n\nThis can be undone from "Decide by name".';
+
+      try {
+        await this.$confirm(msg, 'Same name, same decision', {
+          type: 'warning',
+          confirmButtonText: `Apply to ${preview.records_to_apply}`,
+          cancelButtonText: 'Just this one'
+        });
+      } catch (e) { return }
+
+      try {
+        const res = await applyNameGroup(this.selectedBatchId, {
+          name_key: nameKey, taxon_id: taxonId, whole_name: true,
+          applied_by: this.curatorName
+        });
+        if (res.code === 20000) {
+          this.$message.success(res.message);
+          await this.loadBatchRecords();
+          await this.fetchVerificationSummary();
+        } else {
+          this.$message.error(res.message);
+        }
+      } catch (e) {
+        // interceptor 已经报过了
       }
     },
 
@@ -1874,6 +2111,10 @@ export default {
 }
 
 .suggestion-info {
+  margin-top: 4px;
+}
+
+.fix-menu-cell {
   margin-top: 4px;
 }
 

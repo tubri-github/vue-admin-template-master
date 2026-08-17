@@ -754,8 +754,19 @@ export default {
     this.checkConfig()
     this.loadStats()
     this.fetchReviewList()
+    this.readHandover()
   },
   methods: {
+    // Deep link onto one family disagreement, e.g. from a report or a saved link. Batch
+    // review does NOT come through here -- it opens the move dialog in place, so the curator
+    // never loses the batch they were working in.
+    readHandover() {
+      const q = this.$route.query || {}
+      if (q.local_family && q.reference_family) {
+        this.focusPair = { local_family: q.local_family, reference_family: q.reference_family }
+        this.activeTab = 'quality'
+      }
+    },
     // Recheck flags a family disagreement per taxon, but it is one decision for the whole
     // collection — switch to the tab that records it and point at the right row.
     openFamilyDecision(pair) {

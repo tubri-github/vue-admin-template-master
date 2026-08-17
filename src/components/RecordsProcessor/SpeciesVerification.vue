@@ -235,6 +235,17 @@
             <span v-if="!isFamilyLevelMatch && currentMatchedSpecies.Family" class="detail-item">Family: {{ currentMatchedSpecies.Family }}</span>
             <span v-if="currentMatchedSpecies.Author" class="detail-item">Author: {{ currentMatchedSpecies.Author }}</span>
           </div>
+          <!-- 科不是这条记录的字段，是 taxon 的。写在科旁边，因为 curator 想改的时候
+               看的就是这里，而"为什么这里改不了"只有在这里说才有用。 -->
+          <div v-if="!isFamilyLevelMatch && currentMatchedSpecies.TaxonID" class="family-fix">
+            <el-button type="text" size="mini" @click="$emit('fix-family', currentMatchedSpecies.TaxonID)">
+              Family wrong? Re-file this taxon
+            </el-button>
+            <span class="family-fix-hint">
+              The family belongs to the taxon, not to this record — changing it affects every
+              record using it. Recorded, and undoable.
+            </span>
+          </div>
         </div>
       </div>
 
@@ -736,6 +747,9 @@ export default {
           id: this.record.id,
           taxon_id: suggestedTaxon.TaxonID,
           species_verification_status: 'verified',
+          // 署名。导入时 exact match 自动写的也是 verified + 同一个 TaxonID，
+          // 不带这个事后就分不出哪些是人确认过的
+          verified_by: this.$store.getters.name || 'curator',
           verification_notes: 'Applied taxonomic suggestion from edit dialog'
         })
         if (response.code === 20000) {
@@ -1329,6 +1343,20 @@ export default {
   border-radius: 4px;
   font-size: 12px;
   border: 1px solid #e0e0e0;
+}
+
+.family-fix {
+  margin-top: 8px;
+  text-align: center;
+}
+
+.family-fix-hint {
+  display: block;
+  color: #909399;
+  font-size: 11px;
+  line-height: 1.4;
+  max-width: 420px;
+  margin: 0 auto;
 }
 
 .no-match {

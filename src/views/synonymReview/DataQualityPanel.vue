@@ -381,74 +381,16 @@
       </template>
     </decision-section>
 
-    <!-- ------------------------------- move dialog -------------------------------- -->
-    <el-dialog :visible.sync="moveDlg" title="Move taxa to another family" width="660px">
-      <div v-if="movePair">
-        <p class="dlg-name">
-          {{ moveRows.length }} taxa from {{ movePair.local_family }}
-          <span class="muted">
-            ({{ moveRows.reduce((s, r) => s + (r.specimens || 0), 0) }} specimens)
-          </span>
-        </p>
-        <p class="muted small">
-          We file them under <b>{{ movePair.local_family }}</b>, the Catalog says
-          <b>{{ movePair.reference_family }}</b>. Pick where they actually belong — including a
-          family that is not in our table yet.
-        </p>
-
-        <div class="picker-row">
-          <family-picker v-model="moveTargetId" @change="onTargetPicked" />
-          <span v-if="moveTargetName" class="muted small">
-            → moving them to <b>{{ moveTargetName }}</b>
-          </span>
-        </div>
-
-        <el-alert v-if="movePreview" :closable="false" type="info" class="preview">
-          <div>
-            <b>{{ movePreview.taxa_count }}</b> taxa
-            (<b>{{ movePreview.specimens_count }}</b> specimens) will move to
-            <b>{{ movePreview.target.family_name }}</b>.
-            <el-tag v-if="!movePreview.target.exists" type="warning" size="mini">
-              this family will be created
-            </el-tag>
-          </div>
-          <div v-if="movePreview.already_in_target.length" class="muted small">
-            {{ movePreview.already_in_target.length }} of the selected taxa are already in that
-            family and will be skipped.
-          </div>
-          <div class="muted small">
-            Specimens are not re-identified. Every taxon's previous family is recorded and the
-            whole move can be undone.
-          </div>
-          <!-- Moving to a family CoF still disagrees with does not end the argument, it renames
-               it. Saying so here beats the curator discovering it on the next import. -->
-          <div v-if="movePreview.rulings_to_create.length" class="warn small">
-            The Catalog files some of these under
-            {{ movePreview.rulings_to_create.join(', ') }}, so
-            {{ movePreview.target.family_name }} would start being flagged instead. That
-            follow-up warning will be silenced automatically — it shows up as a “Keep ours”
-            ruling above, and undoing the move revokes it.
-          </div>
-        </el-alert>
-
-        <el-input
-          v-model="moveNote"
-          type="textarea"
-          :rows="2"
-          placeholder="Note (optional) — why this family, e.g. which authority you followed"
-          class="note"
-        />
-      </div>
-      <span slot="footer">
-        <el-button @click="moveDlg = false">Cancel</el-button>
-        <el-button
-          type="primary"
-          :loading="moving"
-          :disabled="!movePreview || !movePreview.taxa_count"
-          @click="doMove"
-        >Move {{ movePreview ? movePreview.taxa_count : '' }} taxa</el-button>
-      </span>
-    </el-dialog>
+    <!-- The move dialog itself lives in a shared component: batch review opens the same one
+         from a record, and one decision should not have two dialogs. -->
+    <family-move-dialog
+      :visible.sync="moveDlg"
+      :taxa="moveRows"
+      :source-local-family="movePair ? movePair.local_family : ''"
+      :source-reference-family="movePair ? movePair.reference_family : null"
+      :curator="curator"
+      @moved="onMoved"
+    />
 
     <!-- ------------------------------- merge dialog ------------------------------- -->
     <el-dialog :visible.sync="mergeDlg" title="Merge duplicate taxa" width="620px">
@@ -509,16 +451,16 @@
 
 <script>
 import DecisionSection from './DecisionSection'
-import FamilyPicker from '@/components/FamilyPicker'
+import FamilyMoveDialog from '@/components/FamilyMoveDialog'
 import {
   getDisagreements, getDisagreementTaxa, getRulings, addRuling, revokeRuling,
-  previewReassign, reassignFamily, getReassignHistory, getReassignTaxa, undoReassign
+  getReassignHistory, getReassignTaxa, undoReassign
 } from '@/api/familyPolicy'
 import { getDuplicateGroups, previewMerge, mergeTaxa, undoMerge, getMergeHistory } from '@/api/taxonMerge'
 
 export default {
   name: 'DataQualityPanel',
-  components: { DecisionSection, FamilyPicker },
+  components: { DecisionSection, FamilyMoveDialog },
   props: {
     // Set when the recheck tab hands over a specific disagreement: {local_family,
     // reference_family}. That row is highlighted and opened so the curator lands on it
@@ -541,14 +483,11 @@ export default {
       // Per-pair tick state. Keyed by pair, not global: several rows can be open at once and
       // a selection must not leak from one family disagreement into another.
       selectedByPair: {},
+      // The dialog owns the target/preview/note state now; this page only says which taxa,
+      // and where they are coming from.
       moveDlg: false,
       movePair: null,
       moveRows: [],
-      moveTargetId: null,
-      moveTargetName: '',
-      movePreview: null,
-      moveNote: '',
-      moving: false,
       moves: [],
       moveTaxa: {},
       moveTaxaLoading: {},
@@ -570,9 +509,7 @@ export default {
   },
   watch: {
     // the preview follows whichever row the curator picks to keep
-    winnerId(id) { if (id && this.mergeTarget) this.loadPreview(id) },
-    // ...and, for a move, whichever family they point at
-    moveTargetId(id) { this.loadMovePreview(id) }
+    winnerId(id) { if (id && this.mergeTarget) this.loadPreview(id) }
   },
   created() {
     this.loadFamily()
@@ -712,60 +649,12 @@ export default {
     openMove(row) {
       this.movePair = row
       this.moveRows = this.selected(row).slice()
-      this.moveTargetId = null
-      this.moveTargetName = ''
-      this.movePreview = null
-      this.moveNote = ''
       this.moveDlg = true
     },
-    onTargetPicked({ familyName }) { this.moveTargetName = familyName || '' },
-    async loadMovePreview(familyId) {
-      if (!familyId || !this.moveRows.length) { this.movePreview = null; return }
-      try {
-        const res = await previewReassign({
-          taxon_ids: this.moveRows.map(r => r.TaxonID),
-          target_family_id: familyId,
-          performed_by: this.curator
-        })
-        this.movePreview = res.code === 20000 ? res.data : null
-      } catch (e) {
-        this.movePreview = null
-      }
-    },
-    async doMove() {
-      const p = this.movePreview
-      try {
-        await this.$confirm(
-          `Move ${p.taxa_count} taxa (${p.specimens_count} specimens) out of
-           ${this.movePair.local_family} into ${p.target.family_name}?
-
-           This changes the taxonomy. Every taxon's previous family is recorded and the move
-           can be undone from "what has already been decided".`,
-          'Move to another family', { type: 'warning' })
-      } catch (e) { return }
-      this.moving = true
-      try {
-        const res = await reassignFamily({
-          taxon_ids: this.moveRows.map(r => r.TaxonID),
-          target_family_id: this.moveTargetId,
-          source_local_family: this.movePair.local_family,
-          source_reference_family: this.movePair.reference_family,
-          note: this.moveNote || null,
-          performed_by: this.curator
-        })
-        if (res.code === 20000) {
-          this.$message.success(res.message)
-          this.moveDlg = false
-          this.$emit('data-changed')
-          this.loadFamily()
-        } else {
-          this.$message.error(res.message)
-        }
-      } catch (e) {
-        // the interceptor already surfaced the server's message
-      } finally {
-        this.moving = false
-      }
+    // The dialog did the write; this page only has to catch up.
+    onMoved() {
+      this.$emit('data-changed')
+      this.loadFamily()
     },
     async onMoveExpand(row, expanded) {
       const open = Array.isArray(expanded) ? expanded.includes(row) : expanded

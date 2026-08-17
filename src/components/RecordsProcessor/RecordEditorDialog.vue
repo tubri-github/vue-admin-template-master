@@ -67,6 +67,7 @@
             :manually-created-family="manuallyCreatedFamily"
             @species-selected="handleSpeciesSelected"
             @species-saved="handleSpeciesSaved"
+            @fix-family="$emit('fix-family', $event)"
             @create-new-species="handleCreateNewSpecies"
             @family-created="handleFamilyCreated"
             @manually-created-family-cancel="handleManuallyCreatedFamilyCancel"

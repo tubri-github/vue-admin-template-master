@@ -68,6 +68,17 @@ export function revokeRuling(rulingId, data) {
 // Reassignment -- the "neither is right" answer. Changes data.
 // ---------------------------------------------------------------------------------------
 
+// One taxon with its current family and specimen count. Lets the move dialog be opened
+// straight from a record in batch review, where the curator has a taxon in hand rather than
+// a (local family -> reference family) row -- and where the family they doubt may not
+// disagree with the Catalog at all, so no such row exists.
+export function getTaxonForMove(taxonId) {
+  return request({
+    url: prefix + `/taxon/${taxonId}`,
+    method: 'get'
+  })
+}
+
 // Dry run. Returns what would move, what is already in the target family, and -- the part
 // worth showing the curator -- which NEW disagreements the move would create, because moving
 // to a family CoF still argues with relocates the warning instead of ending it.

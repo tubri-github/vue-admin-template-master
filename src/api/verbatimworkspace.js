@@ -186,6 +186,60 @@ export function applyTaxonomicSuggestion(record_id) {
   })
 }
 
+// ---- name groups: one decision per imported name, not per record -------------------------
+// The importer writes one verbatim row per spreadsheet row, so a batch can ask for the same
+// judgement a thousand times. These group the pending records by the name the curator reads.
+
+export function getNameGroups(batchSerialId, params = {}) {
+  return request({
+    url: api_prefix + `/batches/${batchSerialId}/name-groups`,
+    method: 'get',
+    params
+  })
+}
+
+export function previewNameGroup(batchSerialId, payload) {
+  return request({
+    url: api_prefix + `/batches/${batchSerialId}/name-groups/preview`,
+    method: 'post',
+    data: payload
+  })
+}
+
+export function applyNameGroup(batchSerialId, payload) {
+  return request({
+    url: api_prefix + `/batches/${batchSerialId}/name-groups/apply`,
+    method: 'post',
+    data: payload
+  })
+}
+
+export function getNameGroupHistory(batchSerialId, params = {}) {
+  return request({
+    url: api_prefix + `/batches/${batchSerialId}/name-groups/history`,
+    method: 'get',
+    params
+  })
+}
+
+// What an undo would restore vs leave alone. Asked BEFORE the confirm dialog: the number of
+// records the apply touched is not the number undo puts back, because anything edited since
+// is deliberately skipped.
+export function previewUndoNameGroup(op_id) {
+  return request({
+    url: api_prefix + `name-groups/${op_id}/undo-preview`,
+    method: 'get'
+  })
+}
+
+export function undoNameGroup(op_id, payload) {
+  return request({
+    url: api_prefix + `/name-groups/${op_id}/undo`,
+    method: 'post',
+    data: payload
+  })
+}
+
 export function applyFamilyTaxon(record_id, family_id) {
   return request({
     url: api_prefix + `/records/${record_id}/apply-family-taxon`,
