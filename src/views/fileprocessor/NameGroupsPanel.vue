@@ -540,6 +540,10 @@ export default {
 </script>
 
 <style scoped>
+/* element-ui 2.13.2 的 .el-drawer 是 overflow:hidden，.el-drawer__body 只有 flex:1、
+   没有 overflow —— 两边都没人负责滚动，内容一超过屏幕高度就被裁掉，展开一行之后下面的
+   既看不见也滚不到。高度 flex:1 已经给足了，只差这一句。 */
+.name-groups-drawer >>> .el-drawer__body { overflow: auto; }
 .ng-body { padding: 20px 24px; }
 .ng-head h3 { margin: 0 0 6px; }
 .ng-head p { margin: 0 0 12px; line-height: 1.6; }

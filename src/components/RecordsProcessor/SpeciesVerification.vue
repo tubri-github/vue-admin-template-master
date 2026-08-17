@@ -212,6 +212,7 @@
           v-if="currentMatchedSpecies"
           size="mini"
           type="danger"
+          :loading="clearingMatch"
           @click="clearMatch"
         >
           Clear Match
@@ -345,6 +346,7 @@
                 <el-button
                   size="mini"
                   type="primary"
+                  :loading="confirmingMatch != null && confirmingMatch === species.TaxonID"
                   @click.stop="confirmMatch(species)"
                 >
                   <i class="el-icon-check" />
@@ -455,6 +457,7 @@
 import CreateSpeciesForm from '@/components/RecordsProcessor/CreateSpeciesForm.vue'
 import { addTaxon, getTaxon } from '@/api/table'
 import { updateVerbatimRecord, applyFamilyTaxon, createFamily } from '@/api/verbatimworkspace'
+import { decideTaxon } from '@/utils/taxonDecision'
 
 export default {
   name: 'SpeciesVerification',
@@ -465,6 +468,11 @@ export default {
     record: {
       type: Object,
       required: true
+    },
+    // 同名批量应用要用它定位批次
+    batchSerialId: {
+      type: String,
+      default: ''
     },
     verbatimData: {
       type: Object,
@@ -512,6 +520,10 @@ export default {
       suggestionAppliedLocal: null,
       applyingSuggestion: false,
       cancellingSuggestion: false,
+
+      // 搜索结果里 Select / Clear Match 的落库状态
+      confirmingMatch: null,
+      clearingMatch: false,
 
       // 去抖计时器
       searchDebouncer: null,
@@ -743,24 +755,31 @@ export default {
 
       this.applyingSuggestion = true
       try {
-        const response = await updateVerbatimRecord({
-          id: this.record.id,
-          taxon_id: suggestedTaxon.TaxonID,
-          species_verification_status: 'verified',
-          // 署名。导入时 exact match 自动写的也是 verified + 同一个 TaxonID，
-          // 不带这个事后就分不出哪些是人确认过的
-          verified_by: this.$store.getters.name || 'curator',
-          verification_notes: 'Applied taxonomic suggestion from edit dialog'
+        // decideTaxon 会先问要不要应用到同名的其余记录，再连这一条一起写。署名、
+        // verified_by 都在里面：导入时 exact match 自动写的也是 verified + 同一个
+        // TaxonID，不带署名事后就分不出哪些是人确认过的。
+        const outcome = await decideTaxon(this, {
+          batchSerialId: this.batchSerialId,
+          recordId: this.record.id,
+          verbatim: this.verbatimData,
+          samePendingAny: this.record.sameNamePendingAny,
+          taxonId: suggestedTaxon.TaxonID,
+          notes: 'Applied taxonomic suggestion from edit dialog',
+          curator: this.$store.getters.name || 'curator'
         })
-        if (response.code === 20000) {
+        if (outcome.ok) {
           this.suggestionAppliedLocal = true
           this.$emit('species-saved', {
             taxonomic: suggestedTaxon,
-            speciesVerificationStatus: 'verified'
+            speciesVerificationStatus: 'verified',
+            nameGroupHandled: true,
+            appliedCount: outcome.count
           })
-          this.$message.success('Suggestion applied and saved')
+          this.$message.success(outcome.mode === 'group'
+            ? `Suggestion applied to ${outcome.count} record(s)`
+            : 'Suggestion applied and saved')
         } else {
-          this.$message.error('Failed to save suggestion')
+          this.$message.error(outcome.message || 'Failed to save suggestion')
         }
       } catch (error) {
         this.$message.error('Failed to apply suggestion')
@@ -873,8 +892,42 @@ export default {
         Author: species.Author
       }
 
-      this.$emit('species-selected', taxonomicData)
-      this.selectedSpecies = species
+      // 以前这里只 emit species-selected（纯内存）+ 弹一句绿色 "Species matched"，要等
+      // curator 再按弹窗底部的 Save 才真的落库 —— 那个 Save 很容易被忽略，看见绿字就关窗
+      // 的话这次选择直接丢了。现在走 decideTaxon：先问要不要应用到同名的其余记录，再一次性
+      // 写下去（这一条也在那次操作里，所以 Undo 能整批还原）。
+      this.confirmingMatch = species.TaxonID
+      try {
+        const outcome = await decideTaxon(this, {
+          batchSerialId: this.batchSerialId,
+          recordId: this.record.id,
+          verbatim: this.verbatimData,
+          samePendingAny: this.record.sameNamePendingAny,
+          taxonId: taxonomicData.TaxonID,
+          notes: 'Selected taxon from edit dialog search',
+          curator: this.$store.getters.name || 'curator'
+        })
+        if (outcome.ok) {
+          this.selectedSpecies = species
+          this.$emit('species-saved', {
+            taxonomic: taxonomicData,
+            speciesVerificationStatus: 'verified',
+            // 同名批量已经在这里问过并处理掉了，父组件不要再问一遍
+            nameGroupHandled: true,
+            appliedCount: outcome.count
+          })
+          this.$message.success(outcome.mode === 'group'
+            ? `${outcome.count} record(s) set to ${taxonomicData.FullName}`
+            : `Species matched and saved: ${taxonomicData.FullName}`)
+        } else {
+          this.$message.error(outcome.message || 'Failed to save the selected species')
+        }
+      } catch (error) {
+        this.$message.error('Failed to save the selected species')
+        console.error(error)
+      } finally {
+        this.confirmingMatch = null
+      }
     },
 
     // 虚拟 family-level 项：调用后端 apply_family_taxon，自动建占位 taxon
@@ -914,9 +967,33 @@ export default {
       }
     },
 
-    // 清除匹配
-    clearMatch() {
-      this.$emit('species-selected', { TaxonID: null })
+    // 清除匹配。跟 confirmMatch 对称：选是立刻存的，清也必须立刻存，否则关掉弹窗之后
+    // 库里还挂着刚被"清掉"的 taxon。
+    async clearMatch() {
+      this.clearingMatch = true
+      try {
+        const response = await updateVerbatimRecord({
+          id: this.record.id,
+          taxon_id: null,
+          species_verification_status: 'pending',
+          verification_notes: 'Cleared taxon match from edit dialog'
+        })
+        if (response.code === 20000) {
+          this.selectedSpecies = null
+          this.$emit('species-saved', {
+            taxonomic: null,
+            speciesVerificationStatus: 'pending'
+          })
+          this.$message.info('Match cleared')
+        } else {
+          this.$message.error(response.message || 'Failed to clear the match')
+        }
+      } catch (error) {
+        this.$message.error('Failed to clear the match')
+        console.error(error)
+      } finally {
+        this.clearingMatch = false
+      }
     },
 
     // 显示创建物种对话框

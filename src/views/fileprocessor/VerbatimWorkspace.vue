@@ -625,6 +625,7 @@
       v-if="showRecordEditor"
       :visible="showRecordEditor"
       :record="editingRecord"
+      :batch-serial-id="selectedBatchId"
       @close="closeRecordEditor"
       @save="handleRecordSave"
       @partial-saved="handlePartialSaved"
@@ -720,6 +721,9 @@ export default {
       batchRecords: [],
       loadingRecords: false,
       totalRecords: 0,
+      // 编辑弹窗这一次打开里已经追问过的「名字 -> taxon」。就地 Apply 和底部 Save 是两条
+      // 保存路径，同一个决定会先后经过两条，不去重就会把同一句话问两遍。
+      nameGroupOffered: [],
 
       // 服务器端过滤和搜索
       serverSideFilter: 'all',
@@ -1570,18 +1574,22 @@ export default {
     editRecord(record) {
       console.log('Editing record:', record);
       this.editingRecord = { ...record };
+      this.nameGroupOffered = [];
       this.showRecordEditor = true;
     },
 
-    // 关闭编辑对话框
+    // 关闭编辑对话框。这里故意不清 nameGroupOffered：底部 Save 会先关弹窗、再追问，
+    // 清掉的话"就地 Apply 已经问过并且被拒绝"的记忆就没了，同一句话会再问一遍。
     closeRecordEditor() {
       this.showRecordEditor = false;
       this.editingRecord = null;
     },
 
     // 子组件已直接持久化（Apply/Cancel suggestion）：仅同步本地行 + 刷新统计，不关闭对话框
-    handlePartialSaved(payload) {
+    async handlePartialSaved(payload) {
       const target = this.batchRecords.find(r => r.id === payload.recordId);
+      // 追问用的是这条记录判之前的样子（同名还剩多少条在等），所以在同步覆盖之前先拍下来
+      const before = target ? { ...target } : null;
       if (target) {
         target.taxonId = payload.taxonId;
         target.taxonomic = payload.taxonomic;
@@ -1601,14 +1609,38 @@ export default {
         this.editingRecord.taxonomic = payload.taxonomic;
       }
       this.fetchVerificationSummary();
+
+      // 就地 Apply / Select 已经在子组件里走过 decideTaxon —— 问过、也连这一条一起写完了，
+      // 这里只要把列表刷新到位就行。剩下没走 decideTaxon 的路径（科级 entry、手工 family
+      // apply）仍然是先写后问，所以还得在这里补一次追问。
+      if (payload.nameGroupHandled) {
+        await this.loadBatchRecords();
+        return;
+      }
+      await this.maybeOfferNameGroup(before, payload.taxonId,
+        payload.speciesVerificationStatus);
+    },
+
+    // 详情弹窗里任何一次种名裁定之后，问要不要把同名的其余记录一起处理掉。
+    // before 必须是判之前的那份快照 —— same_name_pending_any 是"还在等的同名条数"，
+    // 判完再读就已经少了一条甚至归零。
+    async maybeOfferNameGroup(before, taxonId, status) {
+      if (!before || status !== 'verified' || !taxonId) return;
+      const siblings = (before.same_name_pending_any || 0) - 1;
+      const nameKey = this.verbatimNameKey(before);
+      if (siblings <= 0 || !nameKey) return;
+
+      const asked = `${nameKey}|${taxonId}`;
+      if (this.nameGroupOffered.includes(asked)) return;
+      this.nameGroupOffered.push(asked);
+
+      await this.offerToApplyToWholeName(nameKey, taxonId, siblings);
     },
 
     // 处理记录保存
     async handleRecordSave(updatedRecord) {
       // 保存前先记住这条原本的样子：保存后列表会重载，就问不出"这个名字还有多少条在等"了
-      const before = this.records.find(r => r.id === updatedRecord.id) || {};
-      const siblings = (before.same_name_pending_any || 0) - 1;
-      const nameKey = this.verbatimNameKey(before);
+      const before = this.batchRecords.find(r => r.id === updatedRecord.id) || {};
 
       try {
         const response = await updateVerbatimRecord(updatedRecord);
@@ -1621,11 +1653,8 @@ export default {
 
           // 同一个 verbatim 名字就是同一个鉴定。curator 在弹窗里刚判完一条，剩下几百条
           // 一模一样的还在队列里等着 —— 不问一句，他就得把同一件事再做几百遍。
-          if (siblings > 0 && nameKey &&
-              updatedRecord.species_verification_status === 'verified' &&
-              updatedRecord.taxon_id) {
-            await this.offerToApplyToWholeName(nameKey, updatedRecord.taxon_id, siblings);
-          }
+          await this.maybeOfferNameGroup(before, updatedRecord.taxon_id,
+            updatedRecord.species_verification_status);
         }
       } catch (error) {
         this.$message.error('Failed to update record');

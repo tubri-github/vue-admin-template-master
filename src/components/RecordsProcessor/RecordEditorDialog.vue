@@ -61,6 +61,7 @@
           <!-- 物种验证内容 -->
           <species-verification
             :record="localRecord"
+            :batch-serial-id="batchSerialId"
             :verbatim-data="verbatimTaxonomic"
             :match-suggestions="matchSuggestions"
             :family-only="familyOnly"
@@ -203,6 +204,11 @@ export default {
     record: {
       type: Object,
       required: true
+    },
+    // 同名批量应用要用它定位批次；决定和写入在同一次操作里完成（见 utils/taxonDecision）
+    batchSerialId: {
+      type: String,
+      default: ''
     }
   },
   data() {
@@ -290,6 +296,8 @@ export default {
           verificationInfo: this.record.verificationInfo,
 
           processingStatus: this.record.processingStatus,
+          // 同名（不看当初匹配到什么）还在等的条数，含这一条。追问"要不要一起应用"要它
+          sameNamePendingAny: this.record.same_name_pending_any || 0,
           _apiData: apiRecord
         }
 
@@ -440,7 +448,9 @@ export default {
         recordId: this.localRecord.id,
         taxonomic: this.localRecord.taxonomic,
         taxonId: this.localRecord.taxonId,
-        speciesVerificationStatus: this.localRecord.speciesVerificationStatus
+        speciesVerificationStatus: this.localRecord.speciesVerificationStatus,
+        // 子组件走 decideTaxon 时同名批量已经问过并写完了，父组件别再追问一次
+        nameGroupHandled: !!payload.nameGroupHandled
       })
     },
 
