@@ -518,7 +518,11 @@
               </div>
               <span v-else class="text-gray-400">Not matched</span>
 
-              <!-- CoF 建议创建：本地缺该 accepted 名时，与上面的 DB 建议并列 -->
+              <!-- CoF 建议：本地缺该 accepted 名时，与上面的 DB 建议并列。
+                   这里**只报信息不给按钮**。原来那个 "Create & apply" 是一键往馆级
+                   TaxonomicTable/Family 插行、不可撤销，而且科是从 CoF 建议里带过来的，
+                   curator 从没显式选过。建种改到 Edit 弹窗里做（Create New Species，
+                   科要自己挑），那条路还会顺带追问同名的其余记录。 -->
               <div v-if="scope.row.cofCreate" class="cof-suggest"
                    style="margin-top:6px; border-top:1px dashed #dcdfe6; padding-top:4px;">
                 <div class="text-xs" style="color:#E6A23C;">
@@ -526,12 +530,7 @@
                   CoF: {{ cofCreateName(scope.row.cofCreate) }}
                   <span v-if="scope.row.cofCreate.family">({{ scope.row.cofCreate.family }})</span>
                 </div>
-                <el-button
-                  type="warning" size="mini" plain
-                  :loading="creatingCofRecordId === scope.row.id"
-                  @click.stop="createCofTaxon(scope.row)">
-                  Create &amp; apply
-                </el-button>
+                <div class="text-xs text-gray-400">Not in the local taxonomy — add it from Edit</div>
               </div>
             </template>
           </el-table-column>
@@ -687,9 +686,7 @@ import {
   downloadBatchSourceFile,
   markBatchCompleted,
   confirmBatchImport,
-  batchUpdateVerificationStatus,
-  createCofTaxon,
-  previewCreateCofTaxon
+  batchUpdateVerificationStatus
 } from '@/api/verbatimworkspace'
 
 export default {
@@ -794,8 +791,7 @@ export default {
       performingBatchAction: false,
 
       // Apply suggestion loading state
-      applyingRecordId: null,
-      creatingCofRecordId: null
+      applyingRecordId: null
     }
   },
   computed: {
@@ -1479,96 +1475,13 @@ export default {
       return [cof.genus, cof.species, cof.subspecies].filter(Boolean).join(' ');
     },
 
-    // 创建 CoF 建议的 taxon（+ 必要时建科）并指给该记录
-    async createCofTaxon(record) {
-      const cof = record.cofCreate;
-      if (!cof || !cof.genus || !cof.species) {
-        this.$message.warning('No CoF suggestion to create');
-        return;
-      }
-
-      const payload = {
-        genus: cof.genus,
-        species: cof.species,
-        subspecies: cof.subspecies || null,
-        family: cof.family || null
-      };
-
-      // 这个按钮跟这一页其他按钮不是一个量级：别的只改 staging（primary_temp）且能撤销，
-      // 它是往 TaxonomicTable / Family 里插行——全馆分类表的永久改动，建完立刻进匹配器影响
-      // 以后每一批，而且没有撤销（删 taxon 会级联删掉 Determination）。所以点之前必须说清
-      // 到底要建什么，尤其"要不要连科一起建"——那比新建一个种严重得多。
-      let plan = null;
-      this.creatingCofRecordId = record.id;
-      try {
-        const res = await previewCreateCofTaxon(record.id, payload);
-        if (res.code === 20000) plan = res.data;
-      } catch (e) {
-        // 预览失败就退回到笼统的措辞，但绝不跳过确认
-      } finally {
-        this.creatingCofRecordId = null;
-      }
-
-      const name = plan ? plan.full_name : this.cofCreateName(cof);
-      let msg;
-      if (plan && !plan.will_create_taxon) {
-        msg = `${name} already exists in the taxonomy (taxon ${plan.existing_taxon_id}).\n\n` +
-          'It will be applied to this record. Nothing new is added.';
-      } else {
-        msg = `This will add ${name} to the museum taxonomy`;
-        msg += plan && plan.will_create_family
-          ? `, and create the family ${cof.family} as well — that family does not exist locally yet.`
-          : (cof.family ? ` under ${cof.family}.` : '.');
-        msg += '\n\nThis is a permanent change to the shared taxonomy, not just to this ' +
-          'batch: it will be used to match every future import.';
-        msg += '\n\nIt cannot be undone from here — removing a taxon later would also remove ' +
-          'any identifications attached to it.';
-      }
-
-      try {
-        await this.$confirm(msg,
-          plan && !plan.will_create_taxon ? 'Apply existing taxon' : 'Add to the taxonomy',
-          {
-            type: 'warning',
-            confirmButtonText: plan && !plan.will_create_taxon ? 'Apply' : 'Create & apply',
-            cancelButtonText: 'Cancel'
-          });
-      } catch (e) { return }
-
-      this.creatingCofRecordId = record.id;
-      try {
-        const response = await createCofTaxon(record.id, {
-          ...payload,
-          created_by: this.curatorName
-        });
-        if (response.code === 20000) {
-          const d = response.data || {};
-          record.taxonId = d.taxon_id;
-          record.taxonomic = {
-            TaxonID: d.taxon_id,
-            FullName: d.full_name || this.cofCreateName(cof),
-            Family: cof.family,
-            Genus: cof.genus,
-            Species: cof.species
-          };
-          if (record.verificationInfo) {
-            record.verificationInfo.species = { ...record.verificationInfo.species, status: 'verified' };
-          }
-          if (record.processingStatus) record.processingStatus.taxonomic = 'verified';
-          // 说清楚到底是新建了还是复用了已有的——两者对分类表的影响完全不同
-          this.$message.success(d.message ||
-            `Created & applied ${record.taxonomic.FullName}`);
-          this.fetchVerificationSummary();
-        } else {
-          this.$message.error(response.message || 'Failed to create CoF taxon');
-        }
-      } catch (error) {
-        this.$message.error('Failed to create CoF taxon');
-        console.error(error);
-      } finally {
-        this.creatingCofRecordId = null;
-      }
-    },
+    // "Create & apply" 已移除（2026-08-17）。它是这一页唯一一个一键往馆级
+    // TaxonomicTable / Family 插行的按钮，不可撤销（删 taxon 会级联删 Determination），
+    // 而且科是从 CoF 建议里带过来的、curator 从没显式选过——taxon 已存在时确认框写着
+    // "Nothing new is added"，后端却仍会建出一个没有任何 taxa 挂靠的空科。
+    // 建种改到 Edit 弹窗：Create New Species 要自己挑科，并且走 decideTaxon，
+    // 会顺带追问同名的其余记录、整批可撤销。表格里只保留 CoF 那行提示。
+    // 后端 /create-cof-taxon(+/preview) 和 cof_taxon_creation_log 暂时留着，没有调用方。
 
     // 编辑记录
     editRecord(record) {
