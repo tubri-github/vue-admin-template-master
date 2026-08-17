@@ -248,6 +248,18 @@ export function applyFamilyTaxon(record_id, family_id) {
   })
 }
 
+// What Create & apply would actually add. Unlike everything else in batch review this button
+// writes to the MUSEUM taxonomy (TaxonomicTable / Family), not to staging, and there is no
+// undo — so the confirmation has to name the consequence, and only the server knows whether a
+// family is about to be created or an existing one reused.
+export function previewCreateCofTaxon(record_id, payload) {
+  return request({
+    url: api_prefix + `/records/${record_id}/create-cof-taxon/preview`,
+    method: 'post',
+    data: payload
+  })
+}
+
 // 创建 CoF 建议的 taxon（本地缺该 accepted 名时）并指给该记录
 export function createCofTaxon(record_id, payload) {
   return request({

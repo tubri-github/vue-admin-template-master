@@ -687,7 +687,8 @@ import {
   markBatchCompleted,
   confirmBatchImport,
   batchUpdateVerificationStatus,
-  createCofTaxon
+  createCofTaxon,
+  previewCreateCofTaxon
 } from '@/api/verbatimworkspace'
 
 export default {
@@ -1481,13 +1482,60 @@ export default {
         this.$message.warning('No CoF suggestion to create');
         return;
       }
+
+      const payload = {
+        genus: cof.genus,
+        species: cof.species,
+        subspecies: cof.subspecies || null,
+        family: cof.family || null
+      };
+
+      // 这个按钮跟这一页其他按钮不是一个量级：别的只改 staging（primary_temp）且能撤销，
+      // 它是往 TaxonomicTable / Family 里插行——全馆分类表的永久改动，建完立刻进匹配器影响
+      // 以后每一批，而且没有撤销（删 taxon 会级联删掉 Determination）。所以点之前必须说清
+      // 到底要建什么，尤其"要不要连科一起建"——那比新建一个种严重得多。
+      let plan = null;
+      this.creatingCofRecordId = record.id;
+      try {
+        const res = await previewCreateCofTaxon(record.id, payload);
+        if (res.code === 20000) plan = res.data;
+      } catch (e) {
+        // 预览失败就退回到笼统的措辞，但绝不跳过确认
+      } finally {
+        this.creatingCofRecordId = null;
+      }
+
+      const name = plan ? plan.full_name : this.cofCreateName(cof);
+      let msg;
+      if (plan && !plan.will_create_taxon) {
+        msg = `${name} already exists in the taxonomy (taxon ${plan.existing_taxon_id}).\n\n` +
+          'It will be applied to this record. Nothing new is added.';
+      } else {
+        msg = `This will add ${name} to the museum taxonomy`;
+        msg += plan && plan.will_create_family
+          ? `, and create the family ${cof.family} as well — that family does not exist locally yet.`
+          : (cof.family ? ` under ${cof.family}.` : '.');
+        msg += '\n\nThis is a permanent change to the shared taxonomy, not just to this ' +
+          'batch: it will be used to match every future import.';
+        msg += '\n\nIt cannot be undone from here — removing a taxon later would also remove ' +
+          'any identifications attached to it.';
+      }
+
+      try {
+        await this.$confirm(msg,
+          plan && !plan.will_create_taxon ? 'Apply existing taxon' : 'Add to the taxonomy',
+          {
+            type: 'warning',
+            confirmButtonText: plan && !plan.will_create_taxon ? 'Apply' : 'Create & apply',
+            cancelButtonText: 'Cancel'
+          });
+      } catch (e) { return }
+
       this.creatingCofRecordId = record.id;
       try {
         const response = await createCofTaxon(record.id, {
-          genus: cof.genus,
-          species: cof.species,
-          subspecies: cof.subspecies || null,
-          family: cof.family || null
+          ...payload,
+          created_by: this.curatorName
         });
         if (response.code === 20000) {
           const d = response.data || {};
@@ -1503,7 +1551,9 @@ export default {
             record.verificationInfo.species = { ...record.verificationInfo.species, status: 'verified' };
           }
           if (record.processingStatus) record.processingStatus.taxonomic = 'verified';
-          this.$message.success(`Created & applied ${record.taxonomic.FullName}`);
+          // 说清楚到底是新建了还是复用了已有的——两者对分类表的影响完全不同
+          this.$message.success(d.message ||
+            `Created & applied ${record.taxonomic.FullName}`);
           this.fetchVerificationSummary();
         } else {
           this.$message.error(response.message || 'Failed to create CoF taxon');
