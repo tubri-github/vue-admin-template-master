@@ -270,10 +270,18 @@
             <el-col :span="24" class="text-right">
               <!-- One decision per imported name instead of one per record: the importer does
                    not deduplicate names, so a batch can ask for the same judgement 1300 times. -->
-              <el-button type="primary" plain style="margin-right: 10px;" @click="nameGroupsOpen = true">
-                <i class="el-icon-collection"></i>
-                Decide by name
-              </el-button>
+              <!-- 角标只在匹配器把同一个拼写答成了好几个 taxon 时才亮。这种情况极少
+                   （三个真实批次目前都是 0），而且藏在几百个名字里，不主动报就会被漏掉。 -->
+              <el-badge
+                :value="inconsistentNames"
+                :hidden="!inconsistentNames"
+                type="danger"
+                style="margin-right: 10px;">
+                <el-button type="primary" plain @click="nameGroupsOpen = true">
+                  <i class="el-icon-collection"></i>
+                  Decide by name
+                </el-button>
+              </el-badge>
               <el-dropdown @command="handleBatchAction" style="margin-right: 10px;">
                 <el-button>
                   Batch Actions <i class="el-icon-arrow-down el-icon--right"></i>
@@ -686,7 +694,8 @@ import {
   downloadBatchSourceFile,
   markBatchCompleted,
   confirmBatchImport,
-  batchUpdateVerificationStatus
+  batchUpdateVerificationStatus,
+  getInconsistentNameCount
 } from '@/api/verbatimworkspace'
 
 export default {
@@ -791,7 +800,11 @@ export default {
       performingBatchAction: false,
 
       // Apply suggestion loading state
-      applyingRecordId: null
+      applyingRecordId: null,
+
+      // "Decide by name" 按钮上的角标：匹配器答得不一致的名字数
+      inconsistentNames: 0,
+      inconsistentVerifiedRecords: 0
     }
   },
   computed: {
@@ -826,7 +839,9 @@ export default {
     const batchIdFromQuery = this.$route.query.batchId;
     if (batchIdFromQuery) {
       this.selectedBatchId = batchIdFromQuery;
-      await this.selectBatch(batchIdFromQuery);
+      // 原来这里调的是 this.selectBatch()，这个组件里根本没有这个方法：带 ?batchId= 进来
+      // 会在 mounted 里抛 TypeError，自动选批次从来没生效过
+      await this.loadBatchData();
     }
   },
   beforeDestroy() {
@@ -916,9 +931,31 @@ export default {
 
         // 获取详细的verification统计 (包括warnings和errors)
         await this.fetchVerificationSummary();
+
+        // 角标。故意不 await 进上面那串：它只影响一个数字，不该拖慢批次打开
+        this.fetchInconsistentNames();
       } catch (error) {
         this.$message.error('Failed to load batch data');
         console.error(error);
+      }
+    },
+
+    // "Decide by name" 角标的数据源。只在批次打开和整批应用之后拉——这两个时刻它才会变，
+    // 而查询本身要对整批 group by（大批次 250-350ms），不能挂在每次保存的路径上。
+    async fetchInconsistentNames() {
+      if (!this.selectedBatchId) {
+        this.inconsistentNames = 0;
+        this.inconsistentVerifiedRecords = 0;
+        return;
+      }
+      try {
+        const res = await getInconsistentNameCount(this.selectedBatchId);
+        if (res.code === 20000) {
+          this.inconsistentNames = res.data.inconsistent_names || 0;
+          this.inconsistentVerifiedRecords = res.data.inconsistent_verified_records || 0;
+        }
+      } catch (e) {
+        // 角标而已，拉不到就不显示，别打扰正在审批的人
       }
     },
 
@@ -1134,6 +1171,8 @@ export default {
     async onNameGroupApplied() {
       await this.loadBatchRecords();
       await this.fetchVerificationSummary();
+      // 应用/撤销之后不一致的名字数才可能变，这里补一次
+      this.fetchInconsistentNames();
     },
 
     // 分页处理

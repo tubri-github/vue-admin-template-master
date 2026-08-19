@@ -198,6 +198,16 @@ export function getNameGroups(batchSerialId, params = {}) {
   })
 }
 
+// 只要"这批里有几个名字被匹配得不一致"这两个数，给抽屉按钮上的角标用。
+// 单独一个接口而不是塞进 verificationSummary：那个每存一条就重拉一次，而这个查询要对
+// 整批 group by（大批次 250-350ms），挂上去等于每次 Apply 都多等。
+export function getInconsistentNameCount(batchSerialId) {
+  return request({
+    url: api_prefix + `/batches/${batchSerialId}/name-groups/inconsistent-count`,
+    method: 'get'
+  })
+}
+
 export function previewNameGroup(batchSerialId, payload) {
   return request({
     url: api_prefix + `/batches/${batchSerialId}/name-groups/preview`,
