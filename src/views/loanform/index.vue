@@ -15,13 +15,16 @@
         </el-select>
       </el-form-item>
       <el-form-item label="Loan Date">
-        <el-date-picker v-model="form.loanDate" type="date" placeholder="Pick a date" style="width: 100%;" />
+        <!-- value-format 必须写：不写的话 v-model 是 Date 对象，发出去的是 UTC ISO，
+             浏览器时区在 UTC 以东时会少一天（选 8/19 存成 8/18）。 -->
+        <el-date-picker v-model="form.loanDate" type="date" value-format="yyyy-MM-dd" placeholder="Pick a date" style="width: 100%;" />
       </el-form-item>
-      <el-form-item label="Closed" @change="loanCloseSwitch">
-        <el-switch v-model="ifClosed" />
+      <!-- @change 必须绑在 switch 上：el-form-item 不发 change，绑在外层等于没绑。 -->
+      <el-form-item label="Closed">
+        <el-switch v-model="ifClosed" @change="loanCloseSwitch" />
       </el-form-item>
       <el-form-item label="Date Closed">
-        <el-date-picker v-model="form.dateClosed" type="date" placeholder="Pick a date" style="width: 100%;" />
+        <el-date-picker v-model="form.dateClosed" type="date" value-format="yyyy-MM-dd" placeholder="Pick a date" style="width: 100%;" />
       </el-form-item>
       <el-form-item label="Text1">
         <el-input v-model="form.text1" />
@@ -106,7 +109,8 @@
             label="Quantity"
             width="100">
             <template slot-scope="{row}">
-              <el-input type="number" v-model.number="row.Quantity" @focus="onfoucs(row)"/>
+              <!-- t1 的三个数量列都是 smallint，超过 32767 后端会拒绝 -->
+              <el-input type="number" min="0" max="32767" v-model.number="row.Quantity" @focus="onfoucs(row)"/>
             </template>
           </el-table-column>
 
@@ -115,21 +119,21 @@
             label="Quantity Return"
             width="100">
             <template slot-scope="{row}">
-              <el-input type="number" v-model.number="row.QuantityReturned" @focus="onfoucs(row)"/>
+              <el-input type="number" min="0" max="32767" v-model.number="row.QuantityReturned" @focus="onfoucs(row)"/>
             </template>
           </el-table-column>
           <el-table-column
             prop="Quantity Resolved"
             label="Quantity Resolved"
             width="100"> <template slot-scope="{row}">
-            <el-input type="number" v-model.number="row.QuantityResolved" @focus="onfoucs(row)" />
+            <el-input type="number" min="0" max="32767" v-model.number="row.QuantityResolved" @focus="onfoucs(row)" />
           </template>
           </el-table-column>
           <el-table-column
             prop="DescriptionOfMaterial"
             label="DescriptionOfMaterial"
             width="180"> <template slot-scope="{row}">
-            <el-input v-model.number="row.DescriptionOfMaterial" @focus="onfoucs(row)" />
+            <el-input v-model="row.DescriptionOfMaterial" @focus="onfoucs(row)" />
           </template>
           </el-table-column>
 
@@ -137,7 +141,7 @@
             prop="In Comments"
             label="InComments"
             width="180"> <template slot-scope="{row}">
-            <el-input v-model.number="row.InComments" @focus="onfoucs(row)" />
+            <el-input v-model="row.InComments" @focus="onfoucs(row)" />
           </template>
           </el-table-column>
 
@@ -145,7 +149,7 @@
             prop="Out Comments"
             label="OutComments"
             width="180"> <template slot-scope="{row}">
-            <el-input v-model.number="row.OutComments" @focus="onfoucs(row)" />
+            <el-input v-model="row.OutComments" @focus="onfoucs(row)" />
           </template>
           </el-table-column>
 
@@ -153,7 +157,7 @@
             prop="Remarks"
             label="Remarks"
             width="180"> <template slot-scope="{row}">
-            <el-input v-model.number="row.Remarks" @focus="onfoucs(row)"/>
+            <el-input v-model="row.Remarks" @focus="onfoucs(row)"/>
           </template>
           </el-table-column>
 
@@ -530,8 +534,11 @@ export default {
         loanNumberNoType:'',
         transactionType: 'Loan',
         loanDate: new Date(),
-        closed: this.ifClosed ? 'NO' : 'YES',
-        dateClosed: new Date(),
+        // 后端 LoanModel.closed 是 bool，列表页也只认 true/'t'/'true'，所以直接发布尔。
+        // 这里原来是 `this.ifClosed ? 'NO' : 'YES'`：data() 里 this.ifClosed 还没挂上实例（undefined），
+        // 三元又是反的，于是每张新建单据都带着 'YES' + 今天的 dateClosed 落库，一创建就成了「已结束」。
+        closed: false,
+        dateClosed: null,
         text1: '',
         text2: '',
         loanPplID:'',
@@ -627,9 +634,16 @@ export default {
           this.form.loanId = firstItem.ID
           this.form.loanNumber = firstItem.LoanNumber
           this.form.transactionType = firstItem.TransactionType
-          this.form.loanDate = firstItem.LoanDate
-          this.form.closed = firstItem.Closed === 'Yes'? true : false
-          this.form.dateClosed = firstItem.DateClosed,
+          // t2.LoanDate/DateClosed 是 varchar，历史值带尾随空格（'2000-02-02 '）；
+          // 不 trim 的话配上 value-format 的 picker 认不出来，日期框会是空的。
+          this.form.loanDate = (firstItem.LoanDate || '').trim() || null
+          // Closed 是 varchar，历史上存过六种写法（'Yes '/'YES'/'No '/'NO'/'true'/'false'），
+          // 原来只比 === 'Yes' 所以恒为 false；而且写的是 form.closed，开关绑的却是 ifClosed，
+          // 于是已结束的单据点开永远显示「未结束」，随手一存就把状态改坏了。两个都要同步。
+          this.ifClosed = ['yes', 'true', 'y', 't', '1'].includes(
+            String(firstItem.Closed || '').trim().toLowerCase())
+          this.form.closed = this.ifClosed
+          this.form.dateClosed = (firstItem.DateClosed || '').trim() || null,
           this.form.text1 = firstItem.Text1,
             this.form.text2 = firstItem.Text2
             this.form.loanPplID = firstItem.LoanPeopleID
@@ -882,7 +896,9 @@ export default {
       this.printLoanDiablogVisible = true
     },
     loanCloseSwitch(){
-      this.form.closed = this.ifClosed ? 'NO' : 'YES'
+      this.form.closed = this.ifClosed
+      // 取消勾选就把结束日期清掉，否则会留下一个「未结束但有结束日期」的矛盾状态
+      if (!this.ifClosed) this.form.dateClosed = null
     },
     onfoucs(val) {
       const selected = false //聚焦取消勾选
@@ -895,6 +911,9 @@ export default {
       getLotString({ catId:val.CatalogNumber}).then(response =>{
         if(response.data.total===0){
           val.PrimaryString = 'No result'
+          // 必须清掉：curator 把一个查到的目录号改成查不到的号时，PrimaryID 会留着
+          // 上一次的值，这张单子就会静默地借出另一条 lot。
+          val.PrimaryID = ''
         }
         else{
           let lotString = response.data.items[0].LotString
@@ -905,14 +924,36 @@ export default {
 
       });
     },
+    // 没解析出 PrimaryID 的明细行不能提交：存储过程会把空 PrimaryID 当成 NULL 照插，
+    // 生成一条不指向任何 lot 的借出记录（库里已经有 41 条这种孤儿明细）。
+    unresolvedLotRows() {
+      return this.form.loanDetails
+        .map((row, index) => ({ row, index }))
+        .filter(({ row }) => !row.PrimaryID && row.PrimaryID !== 0)
+    },
+    blockIfUnresolvedLots() {
+      const bad = this.unresolvedLotRows()
+      if (bad.length === 0) return false
+      const which = bad
+        .map(({ row, index }) => `row ${index + 1}${row.CatalogNumber ? ` (catalog ${row.CatalogNumber})` : ' (empty)'}`)
+        .join(', ')
+      this.$message({
+        message: `These lot rows did not match a catalog number: ${which}. Fix or delete them before saving.`,
+        type: 'error',
+        duration: 6 * 1000
+      })
+      return true
+    },
     onSubmit() {
+      if (this.blockIfUnresolvedLots()) return
       addNewLoan(this.form).then(() =>{
-        this.$message('submit!')
+        this.$message.success(`Loan ${this.form.loanNumber} created.`)
       })
     },
-    onUpdate(){
+    onUpdate() {
+      if (this.blockIfUnresolvedLots()) return
       updateLoan(this.form).then(() =>{
-        this.$message('updated!')
+        this.$message.success(`Loan ${this.form.loanNumber} updated.`)
       })
     },
     onCancel() {

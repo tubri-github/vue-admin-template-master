@@ -79,7 +79,13 @@ export default {
     fmtClosed(row) {
       return row.DateClosedParsed ? String(row.DateClosedParsed).slice(0, 10) : (row.DateClosed || '')
     },
-    isClosed(row) { return row.Closed === true || row.Closed === 't' || row.Closed === 'true' },
+    // Closed 是 varchar，库里混着六种历史写法（'Yes '/'YES'/'No '/'NO'/'true'/'false'）。
+    // 原来只认 true/'t'/'true'，所以存成 'Yes' 的已结束单据在列表里一律显示 open。
+    isClosed(row) {
+      if (row.Closed === true) return true
+      return ['yes', 'true', 'y', 't', '1'].includes(
+        String(row.Closed || '').trim().toLowerCase())
+    },
     openLoan(row) {
       this.dialogLoanNumber = row.LoanNumber
       this.dialogKey += 1

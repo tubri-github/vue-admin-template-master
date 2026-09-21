@@ -30,6 +30,25 @@ service.interceptors.request.use(
   }
 )
 
+// FastAPI 把出错原因放在响应体的 detail 里；不解开的话 curator 只看得到
+// "Request failed with status code 422"，既不知道哪个字段、也不知道该改什么。
+// detail 可能是一句话（HTTPException），也可能是校验错误数组（pydantic）。
+function backendMessage(error) {
+  const detail = error.response && error.response.data && error.response.data.detail
+  if (typeof detail === 'string' && detail) {
+    return detail
+  }
+  if (Array.isArray(detail) && detail.length) {
+    return detail
+      .map(d => {
+        const field = Array.isArray(d.loc) ? d.loc[d.loc.length - 1] : ''
+        return field ? `${field}: ${d.msg}` : d.msg
+      })
+      .join('; ')
+  }
+  return error.message
+}
+
 // response interceptor
 service.interceptors.response.use(
   /**
@@ -77,7 +96,7 @@ service.interceptors.response.use(
   error => {
     console.log('err' + error) // for debug
     Message({
-      message: error.message,
+      message: backendMessage(error),
       type: 'error',
       duration: 5 * 1000
     })
