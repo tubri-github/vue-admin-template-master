@@ -215,7 +215,7 @@
             </tr>
             <tr><td class="k">Locality</td><td class="v" colspan="3">{{ item.LocalityString }}</td></tr>
             <tr>
-              <td class="k">Col. Date</td><td class="v">{{ item.StartDate }}</td>
+              <td class="k">Col. Date</td><td class="v">{{ item.StartDate || item.VerbatimDate }}</td>
               <td class="k">Col. No.</td><td class="v">{{ item.FieldNo }}</td>
             </tr>
             <tr><td class="k">Col. by</td><td class="v" colspan="3">{{ item.VerbatimCollectors }}</td></tr>

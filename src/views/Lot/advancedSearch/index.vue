@@ -596,6 +596,7 @@ export default {
           ['Inventory', 'Inventory'], ['Field No.', 'FieldNo'], ['Locality', 'LocalityString'],
           ['Country', 'Country'], ['State', 'State'], ['County', 'County'],
           ['Drainage', 'Drainage'], ['Water Body', 'WaterBody'],
+          ['Collected Date', 'CollectedDate'], ['Collector', 'Collector'],
           ['Preparation', 'Preparations'], ['Prep Count', 'PrepCount'],
           ['Longitude', 'Lon'], ['Latitude', 'Lat'], ['Remarks', 'Remarks']
         ]

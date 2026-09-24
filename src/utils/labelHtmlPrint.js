@@ -93,7 +93,7 @@ function loanLabelInner(row, meta) {
         <tr><td class="k">Dr.</td><td class="v">${esc(row.Drainage)}</td><td class="k">No. Spec.</td><td class="v">${spec}</td></tr>
         <tr><td class="k">State</td><td class="v">${esc(row.LocalityState)}</td><td class="k">County</td><td class="v">${esc(row.LocalityCounty)}</td></tr>
         <tr><td class="k">Locality</td><td class="v" colspan="3">${esc(row.LocalityString)}</td></tr>
-        <tr><td class="k">Col. Date</td><td class="v">${esc(row.StartDate)}</td><td class="k">Col. No.</td><td class="v">${esc(row.FieldNo)}</td></tr>
+        <tr><td class="k">Col. Date</td><td class="v">${esc(row.StartDate || row.VerbatimDate)}</td><td class="k">Col. No.</td><td class="v">${esc(row.FieldNo)}</td></tr>
         <tr><td class="k">Col. by</td><td class="v" colspan="3">${esc(row.VerbatimCollectors)}</td></tr>
       </table>
     </div>

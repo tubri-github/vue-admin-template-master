@@ -48,7 +48,7 @@ function labelPage(row, meta) {
       [lbl('Dr.'), fld(row.Drainage), lbl('No. Spec.'), fld(val(row.Quantity) + ' of ' + val(row.TotalNumber))],
       [lbl('State'), fld(row.LocalityState), lbl('County'), fld(row.LocalityCounty)],
       [lbl('Locality'), fld(row.LocalityString, { colSpan: 3 }), SPAN, SPAN],
-      [lbl('Col. Date'), fld(row.StartDate), lbl('Col. No.'), fld(row.FieldNo)],
+      [lbl('Col. Date'), fld(row.StartDate || row.VerbatimDate), lbl('Col. No.'), fld(row.FieldNo)],
       [lbl('Col. by'), fld(row.VerbatimCollectors, { colSpan: 3 }), SPAN, SPAN]
     ])
   ]
