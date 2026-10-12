@@ -2,11 +2,11 @@ import request from '@/utils/request'
 
 const api_prefix = '/batch/'
 // 批次管理相关 API
-export function getVerbatimBatches(data) {
+export function getVerbatimBatches(params) {
   return request({
     url: api_prefix + 'batches',
     method: 'get',
-    data
+    params
   })
 }
 

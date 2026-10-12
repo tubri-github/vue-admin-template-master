@@ -105,7 +105,9 @@ export default {
     size: { type: String, default: 'small' },
     allowCreate: { type: Boolean, default: true },
     disabled: { type: Boolean, default: false },
-    clearable: { type: Boolean, default: true }
+    clearable: { type: Boolean, default: true },
+    // Passed through to createFamily to tag created_via; unset = batch review's tag.
+    source: { type: String, default: null }
   },
   data() {
     return {
@@ -189,7 +191,8 @@ export default {
           const res = await createFamily({
             family_name: name,
             family_number: this.form.family_number.trim() || null,
-            alias2: this.form.alias2.trim() || null
+            alias2: this.form.alias2.trim() || null,
+            source: this.source
           })
           const d = res.data || {}
           const created = { FamilyID: d.family_id, FamilyName: d.family_name }

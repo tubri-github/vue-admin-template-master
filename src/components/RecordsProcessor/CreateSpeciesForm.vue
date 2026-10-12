@@ -43,24 +43,13 @@
         <div slot="header">Taxonomic Information</div>
 
         <el-form-item label="Family" prop="familyID">
-          <el-select
+          <family-picker
             v-model="speciesData.familyID"
+            :initial-label="initialFamilyLabel"
+            :source="source"
             placeholder="Please search family name"
-            filterable
-            remote
-            clearable
-            class="w-full"
-            :remote-method="(query) => remoteMethod(query, 'family')"
-            :loading="remoteLoading"
-            no-match-text="No matched results found."
-          >
-            <el-option
-              v-for="item in familyOptions"
-              :key="item.FamilyID"
-              :label="item.FamilyName"
-              :value="item.FamilyID"
-            />
-          </el-select>
+            @change="$refs.speciesForm.validateField('familyID')"
+          />
         </el-form-item>
 
         <el-form-item label="Genus" prop="Genus">
@@ -112,7 +101,7 @@
 
       <!-- 表单操作 -->
       <div class="form-actions">
-        <el-button @click="cancelForm">Cancel</el-button>
+        <el-button v-if="showCancel" @click="cancelForm">Cancel</el-button>
         <el-button @click="resetForm">Reset</el-button>
         <el-button
           type="primary"
@@ -127,22 +116,31 @@
 </template>
 
 <script>
-import _ from 'lodash'
-import { getFamily } from '@/api/table'
+import FamilyPicker from '@/components/FamilyPicker'
 
 export default {
   name: 'CreateSpeciesForm',
+  components: { FamilyPicker },
   props: {
     verbatimData: {
       type: Object,
       default: null
+    },
+    // Tags created_via on the backend; batch review leaves it unset.
+    source: {
+      type: String,
+      default: null
+    },
+    showCancel: {
+      type: Boolean,
+      default: true
     }
   },
   data() {
     return {
       submitting: false,
       speciesData: {
-        familyID: '',
+        familyID: null,
         Genus: '',
         Species: '',
         Subspecies: '',
@@ -150,10 +148,7 @@ export default {
         FullScientificName: ''
       },
 
-      // Family 选项
-      familyOptions: [],
-      remoteLoading: false,
-      keyWord: '',
+      initialFamilyLabel: '',
 
       // 表单验证规则
       formRules: {
@@ -168,17 +163,9 @@ export default {
         Species: [
           { required: true, message: 'Species is required', trigger: 'blur' },
           { min: 2, max: 100, message: 'Species name should be 2-100 characters', trigger: 'blur' },
-          { pattern: /^[a-z]+$/, message: 'Species should be lowercase', trigger: 'blur' }
+          // hyphen allowed: novae-angliae, nigro-maculatus, ...
+          { pattern: /^[a-z]+(-[a-z]+)*$/, message: 'Species should be lowercase', trigger: 'blur' }
         ]
-      }
-    }
-  },
-  computed: {
-    queryParams() {
-      return {
-        pageSize: -1, // query all data
-        pageNumber: 1,
-        keyWord: this.keyWord
       }
     }
   },
@@ -201,10 +188,7 @@ export default {
       // 如果上游已经查到 FamilyID（family-only 场景），预填 family 选择器
       if (this.verbatimData.familyId) {
         this.speciesData.familyID = this.verbatimData.familyId
-        this.familyOptions = [{
-          FamilyID: this.verbatimData.familyId,
-          FamilyName: this.verbatimData.familyName || this.verbatimData.family || ''
-        }]
+        this.initialFamilyLabel = this.verbatimData.familyName || this.verbatimData.family || ''
       }
 
       // 更新全名
@@ -236,43 +220,6 @@ export default {
       this.speciesData.FullScientificName = fullName
     },
 
-    // 远程搜索方法
-    remoteMethod(searchKey, type) {
-      if (searchKey !== '') {
-        this.remoteLoading = true
-        this.keyWord = searchKey
-        this.getRemote(type)
-      } else {
-        this.familyOptions = []
-      }
-    },
-
-    // 防抖的远程搜索
-    getRemote: _.debounce(function(type) {
-      if (type === 'family') {
-        this.getFamilyList(this.queryParams)
-      }
-    }, 300),
-
-    // 获取 Family 列表
-    async getFamilyList(params) {
-      try {
-        const response = await getFamily(params)
-        this.familyOptions = []
-        response.data.items.forEach((item) => {
-          this.familyOptions.push({
-            FamilyName: item.FamilyName,
-            FamilyID: item.FamilyID
-          })
-        })
-        this.remoteLoading = false
-      } catch (error) {
-        console.error('Error fetching family data:', error)
-        this.$message.error('Failed to load family data')
-        this.remoteLoading = false
-      }
-    },
-
     // 提交表单
     async submitForm() {
       // 验证表单
@@ -299,7 +246,8 @@ export default {
           subspecies: this.speciesData.Subspecies || null,
           remarks: this.speciesData.Remarks || null,
           fullScientificName: this.speciesData.FullScientificName,
-          familyID: this.speciesData.familyID
+          familyID: this.speciesData.familyID,
+          source: this.source
         }
 
         // 触发提交事件，传递格式化的数据

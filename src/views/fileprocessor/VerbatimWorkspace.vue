@@ -5,72 +5,106 @@
 -->
 <template>
   <div class="verbatim-workspace">
-    <!-- 批次选择器 -->
-    <el-card class="batch-selector-card">
-      <div slot="header" class="clearfix">
-        <span class="text-lg font-medium">Verbatim Data Processing Workspace</span>
+    <!-- 批次列表：没选批次时整页展开，代替原来的下拉框 -->
+    <el-card v-if="!selectedBatchId" class="batch-selector-card">
+      <div slot="header" class="batch-list-header">
+        <span class="text-lg font-medium">Batch Review</span>
+        <div class="batch-list-tools">
+          <el-input
+            v-model="batchSearch"
+            size="small"
+            clearable
+            prefix-icon="el-icon-search"
+            placeholder="Search batch ID, file name or date"
+            class="batch-search"
+          />
+          <el-radio-group v-model="batchStatusFilter" size="small">
+            <el-radio-button label="all">All</el-radio-button>
+            <el-radio-button label="review">In review</el-radio-button>
+            <el-radio-button label="ready">Ready to catalog</el-radio-button>
+            <el-radio-button label="cataloged">Cataloged</el-radio-button>
+          </el-radio-group>
+          <el-button size="small" icon="el-icon-refresh" :loading="loadingBatch" @click="refreshBatchList">
+            Refresh
+          </el-button>
+        </div>
       </div>
 
-      <div class="batch-selector">
-        <el-row :gutter="20" align="middle">
-          <el-col :span="8">
-            <el-select
-              v-model="selectedBatchId"
-              placeholder="Select a batch to process"
-              filterable
-              clearable
-              @change="loadBatchData"
-              class="w-full">
-              <el-option
-                v-for="batch in availableBatches"
-                :key="batch.batchSerialId"
-                :label="`${batch.batchSerialId} - ${batch.fileName} (${batch.recordCount} records)`"
-                :value="batch.batchSerialId">
-              </el-option>
-            </el-select>
-          </el-col>
-          <el-col :span="4">
-            <el-button
-              type="primary"
-              :loading="loadingBatch"
-              @click="refreshBatchList">
-              <i class="el-icon-refresh"></i>
-              Refresh
-            </el-button>
-          </el-col>
-          <el-col :span="12" v-if="currentBatch">
-            <div class="batch-info">
-              <span class="batch-info-item">
-                <i class="el-icon-document"></i>
-                {{currentBatch.fileName}}
-              </span>
-              <span class="batch-info-item">
-                <i class="el-icon-tickets"></i>
-                {{currentBatch.recordCount}} records
-              </span>
-              <span class="batch-info-item">
-                <i class="el-icon-time"></i>
-                {{formatDate(currentBatch.importDate)}}
-              </span>
-              <span class="batch-info-item" v-if="currentBatch.sourceFile">
-                <el-button type="text" icon="el-icon-download" @click="downloadSourceFile">
-                  Source file
-                </el-button>
-              </span>
-              <span class="batch-info-item" v-if="currentBatch.fieldMappings">
-                <el-popover placement="bottom" trigger="click" width="320" title="Import field mapping">
-                  <el-table :data="mappingRows" size="mini" :show-header="true">
-                    <el-table-column prop="field" label="Field" width="150"></el-table-column>
-                    <el-table-column prop="column" label="Source column"></el-table-column>
-                  </el-table>
-                  <el-button slot="reference" type="text" icon="el-icon-connection">
-                    Mapping
-                  </el-button>
-                </el-popover>
-              </span>
+      <el-table
+        v-loading="loadingBatch"
+        :data="filteredBatches"
+        size="small"
+        class="batch-table"
+        empty-text="No batches match"
+        @row-click="row => openBatch(row.batchSerialId)"
+      >
+        <el-table-column label="Batch" width="140">
+          <template slot-scope="{ row }">
+            <b>{{ row.batchSerialId }}</b>
+          </template>
+        </el-table-column>
+        <el-table-column prop="fileName" label="File" min-width="220" show-overflow-tooltip />
+        <el-table-column label="Imported" width="110">
+          <template slot-scope="{ row }">{{ formatDate(row.importDate) }}</template>
+        </el-table-column>
+        <el-table-column prop="recordCount" label="Records" width="90" align="right" />
+        <el-table-column label="Reviewed" width="220">
+          <template slot-scope="{ row }">
+            <div class="batch-progress">
+              <el-progress
+                :percentage="pct(row.completedCount, row.recordCount)"
+                :stroke-width="8"
+                :show-text="false"
+                class="batch-progress-bar"
+              />
+              <span class="batch-progress-text">{{ row.completedCount }} / {{ row.recordCount }}</span>
             </div>
-          </el-col>
-        </el-row>
+          </template>
+        </el-table-column>
+        <el-table-column prop="catalogedCount" label="Cataloged" width="100" align="right" />
+        <el-table-column label="Status" width="140">
+          <template slot-scope="{ row }">
+            <el-tag size="mini" :type="batchStage(row).type">{{ batchStage(row).label }}</el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <!-- 已选批次：顶部显示批次信息 + 返回列表 -->
+    <el-card v-else class="batch-selector-card">
+      <div class="batch-open-header">
+        <el-button size="small" icon="el-icon-back" @click="backToBatchList">All batches</el-button>
+        <span class="batch-open-id">{{ selectedBatchId }}</span>
+        <div v-if="currentBatch" class="batch-info">
+          <span class="batch-info-item">
+            <i class="el-icon-document"></i>
+            {{currentBatch.fileName}}
+          </span>
+          <span class="batch-info-item">
+            <i class="el-icon-tickets"></i>
+            {{currentBatch.recordCount}} records
+          </span>
+          <span class="batch-info-item">
+            <i class="el-icon-time"></i>
+            {{formatDate(currentBatch.importDate)}}
+          </span>
+          <span class="batch-info-item" v-if="currentBatch.sourceFile">
+            <el-button type="text" icon="el-icon-download" @click="downloadSourceFile">
+              Source file
+            </el-button>
+          </span>
+          <span class="batch-info-item" v-if="currentBatch.fieldMappings">
+            <el-popover placement="bottom" trigger="click" width="320" title="Import field mapping">
+              <el-table :data="mappingRows" size="mini" :show-header="true">
+                <el-table-column prop="field" label="Field" width="150"></el-table-column>
+                <el-table-column prop="column" label="Source column"></el-table-column>
+              </el-table>
+              <el-button slot="reference" type="text" icon="el-icon-connection">
+                Mapping
+              </el-button>
+            </el-popover>
+          </span>
+        </div>
       </div>
     </el-card>
 
@@ -720,6 +754,8 @@ export default {
       // 批次相关
       selectedBatchId: '',
       availableBatches: [],
+      batchSearch: '',
+      batchStatusFilter: 'all',
       currentBatch: null,
       loadingBatch: false,
 
@@ -808,6 +844,15 @@ export default {
     }
   },
   computed: {
+    filteredBatches() {
+      const q = this.batchSearch.trim().toLowerCase();
+      return this.availableBatches.filter(b => {
+        if (this.batchStatusFilter !== 'all' && this.batchStage(b).key !== this.batchStatusFilter) return false;
+        if (!q) return true;
+        return [b.batchSerialId, b.fileName, this.formatDate(b.importDate)]
+          .some(v => String(v || '').toLowerCase().includes(q));
+      });
+    },
     // 谁做的决定要留在 batch_name_group_apply 里，跟 DataQualityPanel 取同一个来源
     curatorName() { return this.$store.getters.name || 'curator' },
 
@@ -838,10 +883,7 @@ export default {
     // 检查 URL 参数中是否有 batchId，如果有则自动选择该批次
     const batchIdFromQuery = this.$route.query.batchId;
     if (batchIdFromQuery) {
-      this.selectedBatchId = batchIdFromQuery;
-      // 原来这里调的是 this.selectBatch()，这个组件里根本没有这个方法：带 ?batchId= 进来
-      // 会在 mounted 里抛 TypeError，自动选批次从来没生效过
-      await this.loadBatchData();
+      await this.openBatch(String(batchIdFromQuery));
     }
   },
   beforeDestroy() {
@@ -868,7 +910,8 @@ export default {
     async loadAvailableBatches() {
       this.loadingBatch = true;
       try {
-        const response = await getVerbatimBatches();
+        // all=true: the endpoint pages 10 at a time by default, which hid every batch past the 10th
+        const response = await getVerbatimBatches({ all: true });
         if (response.code === 20000) {
           this.availableBatches = response.data.items.map(batch => ({
             batchSerialId: batch.batch_serial_id,
@@ -876,6 +919,8 @@ export default {
             recordCount: batch.total_records,
             importDate: batch.import_date,
             status: batch.status,
+            completedCount: batch.completed_records || 0,
+            catalogedCount: batch.cataloged_records || 0
           }))
         }
       } catch (error) {
@@ -884,6 +929,39 @@ export default {
       } finally {
         this.loadingBatch = false;
       }
+    },
+
+    // 列表里点一行打开批次；batchId 写进 URL，刷新页面还停在这个批次
+    async openBatch(batchId) {
+      this.selectedBatchId = batchId;
+      if (this.$route.query.batchId !== batchId) {
+        this.$router.replace({ query: { ...this.$route.query, batchId } });
+      }
+      await this.loadBatchData();
+    },
+
+    async backToBatchList() {
+      this.selectedBatchId = '';
+      await this.loadBatchData();  // 没有 selectedBatchId 时它只清空当前批次
+      if (this.$route.query.batchId) {
+        const query = { ...this.$route.query };
+        delete query.batchId;
+        this.$router.replace({ query });
+      }
+      // 在批次里审过、编过目，回列表时数字要是新的
+      this.loadAvailableBatches();
+    },
+
+    pct(n, total) {
+      return total ? Math.min(100, Math.round((n / total) * 100)) : 0;
+    },
+
+    // 列表里的状态：按 completed（审完）和 cataloged（已编目进主表）两个数算
+    batchStage(b) {
+      if (b.recordCount && b.catalogedCount >= b.recordCount) return { key: 'cataloged', label: 'Cataloged', type: 'success' };
+      if (b.recordCount && b.completedCount >= b.recordCount) return { key: 'ready', label: 'Ready to catalog', type: 'warning' };
+      if (!b.completedCount) return { key: 'review', label: 'Not started', type: 'info' };
+      return { key: 'review', label: 'In review', type: '' };
     },
 
     // 刷新批次列表
@@ -2061,8 +2139,55 @@ export default {
   margin-bottom: 20px;
 }
 
-.batch-selector {
-  padding: 10px 0;
+.batch-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.batch-list-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.batch-search {
+  width: 280px;
+}
+
+.batch-table >>> .el-table__row {
+  cursor: pointer;
+}
+
+.batch-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.batch-progress-bar {
+  flex: 1;
+}
+
+.batch-progress-text {
+  font-size: 12px;
+  color: #909399;
+  white-space: nowrap;
+}
+
+.batch-open-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.batch-open-id {
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .batch-info {
