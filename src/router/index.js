@@ -205,6 +205,28 @@ export const asyncRoutes = [
   },
 
   {
+    // 独立的 Osteology 模块（ostelogy 表），与 lots collection tree 里的 OST 子记录无关
+    path: '/ost',
+    component: Layout,
+    name: 'Osteology',
+    meta: { title: 'Osteology', icon: 'user' },
+    children: [
+      {
+        path: 'ost',
+        name: 'osteology',
+        component: () => import('@/views/Lot/osteology/index'),
+        meta: { title: 'Osteology', icon: 'user' }
+      },
+      {
+        path: 'search',
+        name: 'osteologySearch',
+        component: () => import('@/views/Lot/osteology/search'),
+        meta: { title: 'Osteology Search', icon: 'search' }
+      }
+    ]
+  },
+
+  {
     path: '/taxonomic',
     component: Layout,
     name: 'Taxonomic',

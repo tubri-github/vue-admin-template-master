@@ -508,7 +508,7 @@ export function getULMStatsReview() {
 // Osteology
 export function getOst(params) {
   return request({
-    url: '/ost',
+    url: api_prefix + 'ost' + '/ost',
     method: 'get',
     params
   })
@@ -516,7 +516,7 @@ export function getOst(params) {
 
 export function updateOst(data) {
   return request({
-    url: '/updateost',
+    url: api_prefix + 'ost' + '/updateost',
     method: 'post',
     data
   })
@@ -524,7 +524,15 @@ export function updateOst(data) {
 
 export function getOstList(params) {
   return request({
-    url: '/ostlist',
+    url: api_prefix + 'ost' + '/ostlist',
+    method: 'get',
+    params
+  })
+}
+
+export function searchOst(params) {
+  return request({
+    url: api_prefix + 'ost' + '/ostsearch',
     method: 'get',
     params
   })
@@ -532,7 +540,7 @@ export function getOstList(params) {
 
 export function reportOst(params) {
   return request({
-    url: '/reportost',
+    url: api_prefix + 'ost' + '/reportost',
     method: 'get',
     params
   })
