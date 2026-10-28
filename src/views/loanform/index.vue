@@ -484,6 +484,25 @@ const loanType = [
 
 
 const loanDate = new Date()
+
+// 老借阅单的 LoanDate/DateClosed 是 varchar，存着 '2/15/2013'、'9/24/04'、'Nov 6 2003' 等写法。
+// picker 配了 value-format="yyyy-MM-dd" 认不出这些，日期框显示为空，而原串又被原样提交。
+// 读进来时统一转成 yyyy-MM-dd；转不了就保留原串（后端会给出明确报错）。
+const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 }
+function normalizeLegacyDate(raw) {
+  const s = String(raw || '').trim()
+  if (!s || /^n\/?a$/i.test(s)) return null
+  let y, m, d, r
+  if ((r = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/))) [, y, m, d] = r
+  else if ((r = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2}|\d{4})$/))) [, m, d, y] = r
+  else if ((r = s.match(/^([A-Za-z]+)\.? (\d{1,2}),? (\d{4})$/))) { [, m, d, y] = r; m = MONTHS[m.slice(0, 3).toLowerCase()] }
+  else if ((r = s.match(/^(\d{1,2}) ([A-Za-z]+)\.? (\d{4})$/))) { [, d, m, y] = r; m = MONTHS[m.slice(0, 3).toLowerCase()] }
+  if (!m) return s
+  y = Number(y)
+  if (y < 100) y += (2000 + y > new Date().getFullYear() ? 1900 : 2000)
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+}
+
 export default {
   name: 'loanForm',
   props:{
@@ -636,14 +655,14 @@ export default {
           this.form.transactionType = firstItem.TransactionType
           // t2.LoanDate/DateClosed 是 varchar，历史值带尾随空格（'2000-02-02 '）；
           // 不 trim 的话配上 value-format 的 picker 认不出来，日期框会是空的。
-          this.form.loanDate = (firstItem.LoanDate || '').trim() || null
+          this.form.loanDate = normalizeLegacyDate(firstItem.LoanDate)
           // Closed 是 varchar，历史上存过六种写法（'Yes '/'YES'/'No '/'NO'/'true'/'false'），
           // 原来只比 === 'Yes' 所以恒为 false；而且写的是 form.closed，开关绑的却是 ifClosed，
           // 于是已结束的单据点开永远显示「未结束」，随手一存就把状态改坏了。两个都要同步。
           this.ifClosed = ['yes', 'true', 'y', 't', '1'].includes(
             String(firstItem.Closed || '').trim().toLowerCase())
           this.form.closed = this.ifClosed
-          this.form.dateClosed = (firstItem.DateClosed || '').trim() || null,
+          this.form.dateClosed = normalizeLegacyDate(firstItem.DateClosed),
           this.form.text1 = firstItem.Text1,
             this.form.text2 = firstItem.Text2
             this.form.loanPplID = firstItem.LoanPeopleID
@@ -897,6 +916,8 @@ export default {
     },
     loanCloseSwitch(){
       this.form.closed = this.ifClosed
+      // 打开时没填结束日期就默认今天（本地时区，别用 toISOString 会差一天）；已选的不覆盖
+      if (this.ifClosed && !this.form.dateClosed) this.form.dateClosed = parseTime(new Date(), '{y}-{m}-{d}')
       // 取消勾选就把结束日期清掉，否则会留下一个「未结束但有结束日期」的矛盾状态
       if (!this.ifClosed) this.form.dateClosed = null
     },
@@ -944,14 +965,28 @@ export default {
       })
       return true
     },
+    // 结束日期不能早于借出日期。新建单的 loanDate 初值是 Date 对象，先统一成 yyyy-MM-dd 再比字符串。
+    blockIfClosedBeforeLoan() {
+      const ymd = v => (v instanceof Date ? parseTime(v, '{y}-{m}-{d}') : v)
+      const loan = ymd(this.form.loanDate)
+      const closed = ymd(this.form.dateClosed)
+      const iso = /^\d{4}-\d{2}-\d{2}$/
+      if (!iso.test(loan || '') || !iso.test(closed || '') || closed >= loan) return false
+      this.$message({
+        message: `Date Closed (${closed}) cannot be earlier than Loan Date (${loan}).`,
+        type: 'error',
+        duration: 6 * 1000
+      })
+      return true
+    },
     onSubmit() {
-      if (this.blockIfUnresolvedLots()) return
+      if (this.blockIfUnresolvedLots() || this.blockIfClosedBeforeLoan()) return
       addNewLoan(this.form).then(() =>{
         this.$message.success(`Loan ${this.form.loanNumber} created.`)
       })
     },
     onUpdate() {
-      if (this.blockIfUnresolvedLots()) return
+      if (this.blockIfUnresolvedLots() || this.blockIfClosedBeforeLoan()) return
       updateLoan(this.form).then(() =>{
         this.$message.success(`Loan ${this.form.loanNumber} updated.`)
       })
