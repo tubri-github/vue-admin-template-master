@@ -215,7 +215,7 @@
             </tr>
             <tr><td class="k">Locality</td><td class="v" colspan="3">{{ item.LocalityString }}</td></tr>
             <tr>
-              <td class="k">Col. Date</td><td class="v">{{ item.StartDate || item.VerbatimDate }}</td>
+              <td class="k">Col. Date</td><td class="v">{{ item.StartDate || labelDate(item.VerbatimDate) }}</td>
               <td class="k">Col. No.</td><td class="v">{{ item.FieldNo }}</td>
             </tr>
             <tr><td class="k">Col. by</td><td class="v" colspan="3">{{ item.VerbatimCollectors }}</td></tr>
@@ -477,6 +477,7 @@ import VueHtml2pdf from 'vue-html2pdf'
 import { getLoan, generateNewLoanID, generateNewGiftID, getLoanPeople, getLotString, addNewLoan, updateLoan } from '@/api/table'
 import { downloadLoanLabels } from '@/utils/loanLabels'
 import { printLoanLabelsHtml } from '@/utils/labelHtmlPrint'
+import { labelDate } from '@/utils/labelDate'
 const loanType = [
   { key: 'Loan', label: 'Loan' },
   { key: 'Gift', label: 'Gift' },
@@ -617,6 +618,7 @@ export default {
     }
   },
   methods: {
+    labelDate,
     getNewLoanNumber(){
       generateNewLoanID({}).then(response =>{
         this.form.loanNumberNoType = response.data.LoanNumberNoType

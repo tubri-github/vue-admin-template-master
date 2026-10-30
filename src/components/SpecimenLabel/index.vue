@@ -20,7 +20,7 @@
       <td class="lbl">Locality</td><td class="val" colspan="3">{{ item.LocalityString }}</td>
     </tr>
     <tr>
-      <td class="lbl">Date</td><td class="val">{{ item.VerbatimDate }}</td>
+      <td class="lbl">Date</td><td class="val">{{ labelDate(item.VerbatimDate) }}</td>
       <td class="lbl">Col. No</td><td class="val">{{ item.FieldNo }}</td>
     </tr>
     <tr>
@@ -30,11 +30,14 @@
 </template>
 
 <script>
+import { labelDate } from '@/utils/labelDate'
+
 export default {
   name: 'SpecimenLabel',
   props: {
     item: { type: Object, default: () => ({}) }
-  }
+  },
+  methods: { labelDate }
 }
 </script>
 

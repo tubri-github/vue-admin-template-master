@@ -5,6 +5,7 @@
 // "margin" that matters on a thermal printer is an X/Y registration offset you calibrate once.
 // The printer feeds one label at a time, so each label = one page (pageBreak).
 import { cutLinesBackground, printPdf, downloadPdf } from '@/utils/labelCommon'
+import { labelDate } from '@/utils/labelDate'
 
 const PT_PER_IN = 72 // pdfmake works in points; 1 inch = 72pt
 const MM = 2.83465 // 1mm ≈ 2.83465pt (used for fine X/Y registration offsets)
@@ -67,7 +68,7 @@ function labelBody(row, geom) {
     [lbl('Dr.'), fld(row.Drainage), lbl('No. of Specimens'), fld(row.TotalNumber)],
     [lbl('State'), fld(row.State), lbl('County'), fld(row.County)],
     [lbl('Locality'), fld(row.LocalityString, { colSpan: 3 }), SPAN, SPAN],
-    [lbl('Date'), fld(row.VerbatimDate), lbl('Col. No'), fld(row.FieldNo)],
+    [lbl('Date'), fld(labelDate(row.VerbatimDate)), lbl('Col. No'), fld(row.FieldNo)],
     [lbl('Col. by'), fld(row.VerbatimCollectors, { colSpan: 3 }), SPAN, SPAN]
   ]
   const table = {

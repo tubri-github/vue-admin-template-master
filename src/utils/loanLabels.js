@@ -2,6 +2,7 @@
 // PDF page = one physical label, so the print path never scales (print at "Actual size").
 // Legacy loan label is TWO pages per specimen: (1) the TULANE specimen label, (2) a NOTES page.
 import { cutLinesBackground, printPdf, downloadPdf } from '@/utils/labelCommon'
+import { labelDate } from '@/utils/labelDate'
 
 const PT_PER_IN = 72
 const MM = 2.83465
@@ -48,7 +49,7 @@ function labelPage(row, meta) {
       [lbl('Dr.'), fld(row.Drainage), lbl('No. Spec.'), fld(val(row.Quantity) + ' of ' + val(row.TotalNumber))],
       [lbl('State'), fld(row.LocalityState), lbl('County'), fld(row.LocalityCounty)],
       [lbl('Locality'), fld(row.LocalityString, { colSpan: 3 }), SPAN, SPAN],
-      [lbl('Col. Date'), fld(row.StartDate || row.VerbatimDate), lbl('Col. No.'), fld(row.FieldNo)],
+      [lbl('Col. Date'), fld(row.StartDate || labelDate(row.VerbatimDate)), lbl('Col. No.'), fld(row.FieldNo)],
       [lbl('Col. by'), fld(row.VerbatimCollectors, { colSpan: 3 }), SPAN, SPAN]
     ])
   ]

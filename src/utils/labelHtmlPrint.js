@@ -3,6 +3,7 @@
 // blank like a fixed-size PDF page gets). Each label is one print page; a dashed border at the
 // top sits on the page edge (@page margin:0) = the cut line for continuous printing.
 import printJS from 'print-js'
+import { labelDate } from '@/utils/labelDate'
 
 function esc(v) {
   return (v === null || v === undefined ? '' : String(v))
@@ -71,7 +72,7 @@ function lotLabelInner(row) {
         <tr><td class="k">Dr.</td><td class="v">${esc(row.Drainage)}</td><td class="k">No. of Specimens</td><td class="v">${esc(row.TotalNumber)}</td></tr>
         <tr><td class="k">State</td><td class="v">${esc(row.State)}</td><td class="k">County</td><td class="v">${esc(row.County)}</td></tr>
         <tr><td class="k">Locality</td><td class="v" colspan="3">${esc(row.LocalityString)}</td></tr>
-        <tr><td class="k">Date</td><td class="v">${esc(row.VerbatimDate)}</td><td class="k">Col. No</td><td class="v">${esc(row.FieldNo)}</td></tr>
+        <tr><td class="k">Date</td><td class="v">${esc(labelDate(row.VerbatimDate))}</td><td class="k">Col. No</td><td class="v">${esc(row.FieldNo)}</td></tr>
         <tr><td class="k">Col. by</td><td class="v" colspan="3">${esc(row.VerbatimCollectors)}</td></tr>
       </table>
       <div class="vn">${cat}</div>
@@ -93,7 +94,7 @@ function loanLabelInner(row, meta) {
         <tr><td class="k">Dr.</td><td class="v">${esc(row.Drainage)}</td><td class="k">No. Spec.</td><td class="v">${spec}</td></tr>
         <tr><td class="k">State</td><td class="v">${esc(row.LocalityState)}</td><td class="k">County</td><td class="v">${esc(row.LocalityCounty)}</td></tr>
         <tr><td class="k">Locality</td><td class="v" colspan="3">${esc(row.LocalityString)}</td></tr>
-        <tr><td class="k">Col. Date</td><td class="v">${esc(row.StartDate || row.VerbatimDate)}</td><td class="k">Col. No.</td><td class="v">${esc(row.FieldNo)}</td></tr>
+        <tr><td class="k">Col. Date</td><td class="v">${esc(row.StartDate || labelDate(row.VerbatimDate))}</td><td class="k">Col. No.</td><td class="v">${esc(row.FieldNo)}</td></tr>
         <tr><td class="k">Col. by</td><td class="v" colspan="3">${esc(row.VerbatimCollectors)}</td></tr>
       </table>
     </div>
