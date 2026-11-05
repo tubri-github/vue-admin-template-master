@@ -71,6 +71,10 @@ const LABEL_STYLE = `
 // Still NO @page size / page-break (those locked orientation + drifted, see memory notes);
 // @page margin:0 only stops Chrome's default margins from auto-shrinking the 4in-wide content.
 const LOT_PITCH_IN = 2
+// The driver's real printable page is a hair under 2in, so a full 2.00in label spills a sliver onto
+// the next page → a blank page after every label. 0.95 (= the 95% that works in the print dialog)
+// makes each label 1.9in; print at 100%. Set back to 1 to undo.
+const LOT_SCALE = 0.95
 const BASE_FONT_PX = 12 // value text starts here and is shrunk per field until it fits its slot
 const MIN_OK_FONT_PX = 7 // below this the label is still printed in full, but flagged in a warning
 const FLOOR_FONT_PX = 3 // absolute floor of the shrink search
@@ -82,7 +86,7 @@ const LOT_STYLE = `
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   .ll {
-    position: relative; width: 4in; height: ${LOT_PITCH_IN}in; overflow: hidden;
+    position: relative; width: 4in; height: ${LOT_PITCH_IN}in; overflow: hidden; zoom: ${LOT_SCALE};
     padding: 0.04in 0.12in 0.03in; margin: 0;
     border-top: 1.5px dashed #000;
     font-family: Arial, Helvetica, sans-serif; color: #000;
