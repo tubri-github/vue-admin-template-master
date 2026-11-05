@@ -83,15 +83,15 @@ const LOT_STYLE = `
   html, body { margin: 0; padding: 0; }
   .ll {
     position: relative; width: 4in; height: ${LOT_PITCH_IN}in; overflow: hidden;
-    padding: 0.06in 0.12in 0.05in; margin: 0;
+    padding: 0.04in 0.12in 0.03in; margin: 0;
     border-top: 1.5px dashed #000;
     font-family: Arial, Helvetica, sans-serif; color: #000;
     display: flex; flex-direction: column;
     break-inside: avoid; page-break-inside: avoid;
   }
-  .ll .hd { flex: 0 0 16px; text-align: center; font-weight: bold; font-size: 13px; line-height: 16px; white-space: nowrap; }
+  .ll .hd { flex: 0 0 15px; text-align: center; font-weight: bold; font-size: 13px; line-height: 15px; white-space: nowrap; }
   /* type-specimen badge: circled letter(s) in the top-left corner; absolute so the title never moves */
-  .ll .tb { position: absolute; left: 0.12in; top: 0.05in; width: 18px; height: 18px; border: 1.5px solid #000;
+  .ll .tb { position: absolute; left: 0.12in; top: 0.03in; width: 17px; height: 17px; border: 1.5px solid #000;
             border-radius: 50%; display: flex; align-items: center; justify-content: center;
             font-weight: bold; font-size: 11px; line-height: 1; letter-spacing: -0.5px; }
   .ll .bd { flex: 1 1 0; min-height: 0; display: flex; }
@@ -99,15 +99,15 @@ const LOT_STYLE = `
   /* min-height:0 is essential: a flex row's default min-height:auto lets long text grow the row
      (pushing every row below it down) instead of overflowing → then shrinkToFit can detect it. */
   .ll .r { display: flex; align-items: flex-end; min-width: 0; min-height: 0; overflow: hidden; }
-  .ll .r1 { flex: 0 0 19px; } .ll .r2 { flex: 0 0 23px; } .ll .r3 { flex: 0 0 40px; }
-  .ll .r4 { flex: 0 0 24px; }
+  .ll .r1 { flex: 0 0 18px; } .ll .r2 { flex: 0 0 26px; } .ll .r3 { flex: 0 0 43px; }
+  .ll .r4 { flex: 0 0 27px; } /* 4×r1 + r2 + r3 + r4 = 168px = body height */
   .ll .k { flex: 0 0 auto; font-weight: bold; font-size: 11px; line-height: 1.15; white-space: nowrap;
            padding: 0 3px 2px 0; }
   .ll .k.l { width: 50px; }
   .ll .k.rk { padding-left: 6px; }
   .ll .v { display: flex; align-items: flex-end; min-width: 0; align-self: stretch;
            border-bottom: 1px solid #000; padding: 0 3px 1px; overflow: hidden;
-           font-size: ${BASE_FONT_PX}px; line-height: 1.12; }
+           font-size: ${BASE_FONT_PX}px; line-height: 1.2; } /* <1.15 lets Arial glyph tops poke out and get clipped */
   .ll .v.grow { flex: 1 1 0; }
   .ll .v .tx { display: block; max-width: none; overflow-wrap: normal; word-break: normal; }
   .ll .v.one .tx { white-space: nowrap; }
@@ -119,9 +119,11 @@ const LOT_STYLE = `
 
 // TypeStatus is free text (Paratypes / PARATYPE / Holotype / "MS Paratypes" / "Paratypes(36)" / junk
 // like "2 jars"). Display-only mapping to a circled abbreviation; anything unrecognised → no badge.
-// Order matters: the compound words (paratopotype, paralectotype) must be checked first.
+// Order matters: "MS" (manuscript name — not formally published, so NOT a real type) must win over
+// the type word it qualifies ("MS Paratypes" → MS, not P); then the compound words (paratopotype,
+// paralectotype) before their parts.
 const TYPE_BADGES = [
-  [/paratopotyp/i, 'PT'], [/paralectotyp/i, 'PL'], [/holotyp/i, 'H'], [/paratyp/i, 'P'],
+  [/\bms\b/i, 'MS'], [/paratopotyp/i, 'PT'], [/paralectotyp/i, 'PL'], [/holotyp/i, 'H'], [/paratyp/i, 'P'],
   [/allotyp/i, 'A'], [/neotyp/i, 'N'], [/lectotyp/i, 'L'], [/syntyp/i, 'S'], [/topo/i, 'T']
 ]
 function typeBadge(ts) {
@@ -161,8 +163,14 @@ function lotLabelInner(row) {
 // Shrink each slot's text (binary search on font-size) until it fits its box — never truncated.
 // Runs in a hidden iframe holding ONLY LOT_STYLE, i.e. the same environment print-js prints in
 // (scanStyles:false), so what fits here fits on paper. Returns the HTML with the sizes inlined.
+// FIT_SAFETY_Y: keep wrapped text clear of the row above (printer rasterization differs slightly
+// from the on-screen layout, and a 2-line value sitting flush against the slot top got clipped).
+const FIT_SAFETY_Y = 4
+// Only WRAPPING value cells need it: a single line is bottom-aligned with plenty of headroom.
 function fitsIn(box, tx, padX) {
-  return tx.scrollWidth <= box.clientWidth - padX + 0.5 && tx.offsetHeight <= box.clientHeight + 0.5
+  const wraps = box.classList.contains('v') && !box.classList.contains('one')
+  return tx.scrollWidth <= box.clientWidth - padX + 0.5 &&
+    tx.offsetHeight <= box.clientHeight - (wraps ? FIT_SAFETY_Y : 0) + 0.5
 }
 function shrinkToFit(box, tx, base, padX) {
   if (fitsIn(box, tx, padX)) return base
